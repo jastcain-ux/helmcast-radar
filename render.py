@@ -93,10 +93,18 @@ ALPHA = 200
 # have a hard boundary and drawing one implies a certainty about where the rain
 # stops that a 3 km model does not have.
 EDGE_FADE_DBZ = 8.0
-# Steps of edge softness. The eye cannot see 256 of them and PNG pays for every
-# one — quantising here cut the busiest frame from 1.15 MB to 660 KB with no
-# visible difference, which is a boater's cellular data at a boat ramp.
-EDGE_FADE_STEPS = 4
+# Steps of edge softness.
+#
+# This was 4, to save bytes, and it was the single worst-looking decision in
+# this file. Four steps of alpha put hard contour rings around every faint
+# echo — most visible over water, where the field changes slowly and each ring
+# covers a wide area. It read as exactly the blockiness the cubic sampling was
+# added to remove, and no amount of smoothing upstream could survive being
+# posterised at the end.
+#
+# 32 costs about 350 KB a frame and is the difference between "a grid" and
+# "clouds". The bytes were a false economy: the picture is the product.
+EDGE_FADE_STEPS = 32
 # The ramp is walked as a continuous gradient rather than 14 hard bands, in
 # this many steps across its range. Hard bands drew visible contour edges once
 # a national frame was zoomed to one bay — a staircase in the picture that
