@@ -1,0 +1,4 @@
+eccodes>=2.40
+numpy>=1.26
+pillow>=10.4
+pyproj>=3.6
