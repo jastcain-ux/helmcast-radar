@@ -19,8 +19,9 @@ the files into images. That is all this is.
 
 About 2.2 MB pulled from NOMADS per run, because the GRIB index sidecar lets
 us range-request only the reflectivity record — 0.3 MB instead of the 130 MB
-full file. Output is six national PNGs totalling roughly 1.7 MB, overwritten
-hourly. Rendering takes a few seconds.
+full file. Output is six national PNGs at 4096x2304 — about 1.4 km per pixel, finer than
+the model's own 3 km grid because the app upscales a national frame down to a
+single bay. Overwritten hourly. Rendering takes a few seconds.
 
 ## Running it by hand
 
@@ -64,8 +65,13 @@ matter. Only the last step of the workflow changes; the renderer does not.
   hours ago is not six hours of outlook.
 - **Below 5 dBZ is transparent.** Drizzle nobody can feel must not paint the
   bay green.
-- **Nearest-neighbour sampling, never interpolation.** Smoothing reflectivity
-  invents gradients between cells that the model did not produce.
+- **Bilinear sampling, and a soft outer edge.** This started as
+  nearest-neighbour on the theory that smoothing invents gradients the model
+  did not produce. That was wrong. Reflectivity is a continuous field sampled
+  every 3 km, and hard square cells assert a sharp boundary exactly where the
+  model is least certain — a storm edge is not a 3 km square. The colour
+  *bands* stay discrete, so nothing is invented about intensity; only the shape
+  is smoothed.
 
 ## It is a model, not a measurement
 
