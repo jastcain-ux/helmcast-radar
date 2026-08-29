@@ -17,13 +17,19 @@ the files into images. That is all this is.
 
 ## What it costs
 
-About 2.2 MB pulled from NOMADS per run, because the GRIB index sidecar lets
+About 16 MB pulled from NOMADS per run, because the GRIB index sidecar lets
 us range-request only the reflectivity record — 0.3 MB instead of the 130 MB
-full file. Twelve forecast hours are rendered although the app scrubs six: the newest
-complete run is always one to two hours behind the clock, so six frames ran out
-before the end of a six-hour scrubber.
+full file. Frames every 15 minutes out to 9 hours, although the app scrubs six. Quarter
+hours are HRRR's own sub-hourly cadence, so each step is a real model frame
+rather than an interpolated one. The extra hours cover run lag: the newest
+complete run is always one to two hours behind the clock, so a six-hour series
+ran out before the end of a six-hour scrubber.
 
-Output is twelve national PNGs at 4096x2304 — about 1.4 km per pixel, finer than
+Note that sub-hourly GRIB files hold four lead times each, so the index has to
+be matched on the lead label as well as the field name — taking the first REFC
+record returns :15 for every quarter hour asked for.
+
+Output is 36 national PNGs at 4096x2304 — about 1.4 km per pixel, finer than
 the model's own 3 km grid because the app upscales a national frame down to a
 single bay. Overwritten hourly. Rendering takes a few seconds.
 

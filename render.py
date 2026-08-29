@@ -43,15 +43,25 @@ MERCATOR_R = 20037508.342789244
 
 # The frames the app scrubs through. HRRR runs out to 18 hours; Helmcast shows
 # six, matching the radar timeline it already has.
-# Twelve, not six, although the app only ever scrubs six.
+# Every 15 minutes out to 8 hours.
 #
-# The newest complete run is always one to two hours behind the wall clock, so
-# frames starting at run+1h ran out before the end of a six-hour scrubber and
-# the last hours fell back to the wind field — which over calm water is a flat
-# blue wash, and read as "the radar turned blue". Rendering to twelve keeps six
-# real hours ahead of *now* even when a run is badly delayed. Frames are only
-# downloaded when scrubbed to, so the extra ones cost storage, not the boater.
-FORECAST_HOURS = range(1, 13)
+# QUARTER-HOURS because that is HRRR's own sub-hourly cadence — these are real
+# model steps, not interpolated ones. An hourly step was too coarse to watch a
+# squall line approach: at 25 knots a storm crosses fifteen miles between
+# frames, which on a 60-mile map is a jump rather than a movement.
+#
+# NINE HOURS, although the app only scrubs six. The newest complete run is
+# always one to two hours behind the wall clock, so a series starting at run+1h
+# ran out before the end of a six-hour scrubber and the last steps fell back to
+# the wind field — a flat blue wash that read as "the radar turned blue".
+#
+# Three hours of margin is deliberate: past three hours the manifest reads as
+# stale and the app says so out loud, so covering further would only be padding
+# a window the screen has already disowned.
+#
+# Frames are only downloaded when scrubbed to, so the extra ones cost storage
+# rather than the boater's data.
+FORECAST_MINUTES = list(range(15, 9 * 60 + 1, 15))
 
 # CONUS, a little wider than the model grid so nothing is clipped at the edges.
 CONUS_BBOX = (-127.0, 21.0, -65.0, 50.0)
@@ -95,8 +105,24 @@ EDGE_FADE_STEPS = 4
 RAMP_STEPS = 24
 
 
-def _url(day, run, fh, suffix=""):
-    return f"{NOMADS}/hrrr.{day}/conus/hrrr.t{run:02d}z.wrfsfcf{fh:02d}.grib2{suffix}"
+def _url(day, run, minutes, suffix=""):
+    """The file holding this lead time, and the label its index uses.
+
+    Whole hours live in the hourly surface files; the half-hours live in the
+    sub-hourly ones, which carry four 15-minute steps each. Both publish
+    composite reflectivity, and both are indexed the same way — only the
+    filename and the way the record labels its lead time differ.
+    """
+    if minutes % 60 == 0:
+        name = f"wrfsfcf{minutes // 60:02d}"
+    else:
+        # e.g. 45 min lives in wrfsubhf01, alongside 15, 30 and 60.
+        name = f"wrfsubhf{-(-minutes // 60):02d}"
+    return f"{NOMADS}/hrrr.{day}/conus/hrrr.t{run:02d}z.{name}.grib2{suffix}"
+
+
+def _lead_label(minutes):
+    return f"{minutes // 60} hour fcst" if minutes % 60 == 0 else f"{minutes} min fcst"
 
 
 def _get(url, byte_range=None, timeout=90):
@@ -106,20 +132,25 @@ def _get(url, byte_range=None, timeout=90):
     return urllib.request.urlopen(req, timeout=timeout).read()
 
 
-def refc_byte_range(day, run, fh):
-    """Byte range of the composite-reflectivity record.
+def refc_byte_range(day, run, minutes):
+    """Byte range of the composite-reflectivity record for this lead time.
 
-    The .idx sidecar lists every record as `number:offset:d=date:field:...`,
-    so one small text fetch turns a 130 MB file into a 0.3 MB range request.
+    The .idx sidecar lists every record as
+    `number:offset:d=date:field:level:lead:`, so one small text fetch turns a
+    130 MB file into a 0.3 MB range request. Sub-hourly files hold four lead
+    times, so the lead label has to be matched as well as the field — taking
+    the first REFC would silently return :15 for every half-hour asked for.
     """
-    lines = _get(_url(day, run, fh, ".idx"), timeout=30).decode().splitlines()
+    url = _url(day, run, minutes, ".idx")
+    lines = _get(url, timeout=30).decode().splitlines()
+    want = _lead_label(minutes)
     for i, line in enumerate(lines):
         parts = line.split(":")
-        if len(parts) > 3 and parts[3] == "REFC":
+        if len(parts) > 5 and parts[3] == "REFC" and parts[5].strip() == want:
             start = int(parts[1])
             end = int(lines[i + 1].split(":")[1]) - 1 if i + 1 < len(lines) else ""
             return start, end
-    raise LookupError(f"no REFC record in {_url(day, run, fh, '.idx')}")
+    raise LookupError(f"no REFC '{want}' in {url}")
 
 
 def latest_complete_run(now=None):
@@ -135,7 +166,7 @@ def latest_complete_run(now=None):
         day, run = t.strftime("%Y%m%d"), t.hour
         try:
             urllib.request.urlopen(
-                urllib.request.Request(_url(day, run, max(FORECAST_HOURS), ".idx")),
+                urllib.request.Request(_url(day, run, max(FORECAST_MINUTES), ".idx")),
                 timeout=20).read(1)
             return day, run
         except Exception:
@@ -143,9 +174,9 @@ def latest_complete_run(now=None):
     raise SystemExit("no complete HRRR run published in the last 10 hours")
 
 
-def read_refc(day, run, fh):
-    lo, hi = refc_byte_range(day, run, fh)
-    raw = _get(_url(day, run, fh), (lo, hi))
+def read_refc(day, run, minutes):
+    lo, hi = refc_byte_range(day, run, minutes)
+    raw = _get(_url(day, run, minutes), (lo, hi))
     fd, path = tempfile.mkstemp(suffix=".grib2")
     os.write(fd, raw)
     os.close(fd)
@@ -277,25 +308,27 @@ def main():
     print(f"HRRR run {run_at.isoformat()}")
 
     frames, downloaded = [], 0
-    for fh in FORECAST_HOURS:
+    for minutes in FORECAST_MINUTES:
         try:
-            values, meta, nbytes = read_refc(day, run, fh)
+            values, meta, nbytes = read_refc(day, run, minutes)
             image = render(values, meta, CONUS_BBOX, FRAME_SIZE)
-            name = f"refc-f{fh:02d}.png"
+            name = f"refc-{minutes:04d}.png"
             image.save(os.path.join(args.out, name), optimize=True)
             downloaded += nbytes
+            # The model's own valid time, not run + lead. If those ever
+            # disagree the file is right and the arithmetic is wrong.
             when = valid_time(meta)
             frames.append({
-                "forecastHour": fh,
+                "leadMinutes": minutes,
                 "validTime": when.isoformat().replace("+00:00", "Z") if when else None,
                 "image": name,
             })
             size_kb = os.path.getsize(os.path.join(args.out, name)) / 1024
-            print(f"  f{fh:02d}  {nbytes/1e6:.2f} MB in  ->  {size_kb:5.0f} KB  {name}")
+            print(f"  +{minutes:3d} min  {nbytes/1e6:.2f} MB in  ->  {size_kb:5.0f} KB  {name}")
         except Exception as e:
-            # Absent, never substituted. A missing hour is a thing the app has
+            # Absent, never substituted. A missing step is a thing the app has
             # to be able to say out loud.
-            print(f"  f{fh:02d}  SKIPPED: {e}", file=sys.stderr)
+            print(f"  +{minutes:3d} min  SKIPPED: {e}", file=sys.stderr)
 
     if not frames:
         raise SystemExit("no frames rendered; leaving the previous manifest in place")
@@ -315,7 +348,7 @@ def main():
     }
     with open(os.path.join(args.out, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=1)
-    print(f"{len(frames)}/{len(list(FORECAST_HOURS))} frames, "
+    print(f"{len(frames)}/{len(FORECAST_MINUTES)} frames, "
           f"{downloaded/1e6:.1f} MB pulled from NOMADS")
 
 
