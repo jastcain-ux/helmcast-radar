@@ -73,19 +73,26 @@ FRAME_SIZE = (4096, 2304)
 
 # NWS-style reflectivity ramp, in dBZ. The first stop is where painting starts:
 # below it the frame stays transparent.
-# Starts at 15 dBZ, not 5.
+# NOAA's own reflectivity palette, sampled from the legend the measured mosaic
+# publishes, at the same thresholds.
 #
-# Between 5 and 15 dBZ is drizzle and mist, and at 3 km resolution it is also
-# where the model is noisiest — a haze of speckle that made the whole picture
-# look broken while telling a boater nothing. What matters here is squalls, and
-# those are 20 dBZ and up. Nothing that affects a decision is hidden: the
-# rating never reads this map, and the legend says it starts at light rain.
+# Matching it is not decoration. The scrubber crosses from NOAA's measured
+# mosaic into these frames at "now", and the two halves were painted from
+# different ramps with different floors — the mosaic from 5 dBZ, these from 15.
+# Dragging past now therefore made rain *vanish*: a boater watching a line
+# approach saw it thin out at the present moment, which reads as clearing that
+# is not happening. That is false calm at the exact instant of most interest.
+#
+# The floor comes back to 5 for the same reason. It was raised to 15 to hide
+# model speckle, and that was solving the wrong problem — the speckle was
+# posterisation, fixed properly by RAMP_STEPS and EDGE_FADE_STEPS below.
 RAMP = [
-    (15, (  3,   0, 244)),
-    (20, (  2, 253,   2)), (25, (  1, 197,   1)), (30, (  0, 142,   0)),
-    (35, (253, 248,   2)), (40, (229, 188,   0)), (45, (253, 149,   0)),
-    (50, (253,   0,   0)), (55, (212,   0,   0)), (60, (188,   0,   0)),
-    (65, (248,   0, 253)), (70, (152,  84, 198)),
+    ( 5, ( 51, 235, 235)), (10, ( 52, 164, 246)), (15, ( 52,  52, 246)),
+    (20, ( 51, 254,  51)), (25, ( 51, 202,  51)), (30, ( 51, 149,  51)),
+    (35, (255, 255,  52)), (40, (232, 194,  52)), (45, (254, 149,  50)),
+    (50, (254,  49,  49)), (55, (221,  49,  49)), (60, (193,  47,  47)),
+    (65, (193,  46,  46)), (70, (158,  99, 203)), (75, (204,  54, 241)),
+    (80, ( 48, 198, 201)),
 ]
 ALPHA = 200
 # The outermost returns fade in rather than starting at full opacity, so the
