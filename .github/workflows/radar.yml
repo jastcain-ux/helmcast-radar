@@ -63,16 +63,29 @@ jobs:
       # HRRR runs hourly and takes roughly 50 minutes to publish its full
       # window, so re-rendering on every ten-minute tick would pull ~16 MB for
       # frames that have not changed.
+      # Forecast radar, only when the published manifest has gone stale.
+      # HRRR runs hourly and takes roughly 50 minutes to publish its full
+      # window, so re-rendering on every ten-minute tick would pull ~16 MB for
+      # frames that have not changed.
+      #
+      # The decision is made in Python rather than shell arithmetic. The first
+      # version was `[ "$age" -lt 5400 ] && stale=0`, which returns non-zero
+      # when the manifest is fresh — and steps run under `bash -e`, so a
+      # *successful* freshness check would have failed the whole job. It could
+      # not fire on the first run, when there is no manifest, so it would have
+      # started breaking later and looked like something else.
       - name: Render forecast frames if the run has moved on
         run: |
-          manifest=public/manifest.json
-          stale=1
-          if [ -f "$manifest" ]; then
-            age=$(( $(date -u +%s) - $(date -u -d "$(python -c "
-          import json;print(json.load(open('$manifest'))['runTime'])")" +%s) ))
-            [ "$age" -lt 5400 ] && stale=0
-          fi
-          if [ "$stale" = 1 ]; then
+          if python - <<'EOF'
+          import datetime, json, os, sys
+          path = "public/manifest.json"
+          if not os.path.exists(path):
+              sys.exit(0)                      # nothing published yet: render
+          run = json.load(open(path))["runTime"].replace("Z", "+00:00")
+          age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(run)
+          sys.exit(0 if age.total_seconds() > 5400 else 1)
+          EOF
+          then
             python render.py --out public
           else
             echo "forecast manifest is current; skipping"
