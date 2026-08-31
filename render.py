@@ -65,6 +65,66 @@ FORECAST_MINUTES = list(range(15, 9 * 60 + 1, 15))
 
 # CONUS, a little wider than the model grid so nothing is clipped at the edges.
 CONUS_BBOX = (-127.0, 21.0, -65.0, 50.0)
+
+# Regional cells, the same correction the measured half already had.
+#
+# A national frame cannot serve the zoom a boater actually uses: 35 miles of
+# water out of a country-wide picture is a few dozen pixels, and blown up to a
+# phone it is mush. That was fixed for the measured frames and never applied
+# here, which is why the forecast half looked so much worse than the past half
+# on the same screen — about seven times harder magnified before it was drawn.
+#
+# The cells are COARSER than the measured ones on purpose. MRMS is a 1 km
+# mosaic and earns 0.2 km/px; HRRR is a 3 km model, so past roughly 200 px per
+# degree the extra pixels carry no extra information and only cost bytes and
+# render time. Ten by seven degrees at 2000 x 1400 is ~200 px/degree — about
+# six times what the national frame gave, and honest about the model's limit.
+#
+# Fewer, bigger cells also keep the run affordable: every lead time is rendered
+# into every cell, so 36 steps against the measured half's 25 cells would be
+# 900 frames an hour.
+FORECAST_CELL_SPAN = (10.0, 7.0)
+FORECAST_CELL_SIZE = (2000, 1400)
+FORECAST_CELL_ORIGINS = [
+    # Atlantic
+    ("northeast",       -78.0, 38.0),
+    ("downeast",        -72.0, 42.0),
+    ("mid-atlantic",    -84.0, 32.0),
+    ("southeast",       -85.0, 26.0),
+    ("florida",         -86.0, 23.0),
+    # Gulf
+    ("gulf-east",       -92.0, 26.0),
+    ("gulf-west",      -100.0, 24.0),
+    # Great Lakes
+    ("great-lakes",     -93.0, 40.0),
+    ("lake-superior",   -93.0, 44.0),
+    ("lake-erie-ontario", -83.0, 41.0),
+    # Pacific
+    ("socal",          -124.0, 30.0),
+    ("norcal",         -128.0, 36.0),
+    ("northwest",      -128.0, 42.0),
+    # Inland. Helmcast supports lakes and reservoirs, and a boater on Lake
+    # Texoma or Lake Mead is as entitled to a forecast picture as one on the
+    # Gulf. Without these the forecast half falls back to the wind field —
+    # a flat blue wash that has twice been mistaken for the radar being
+    # broken. `test_cells_cover_the_water_the_app_serves` is the guard.
+    ("texas-inland",   -100.0, 29.0),
+    ("mid-south",       -94.0, 33.0),
+    ("southwest",      -118.0, 34.0),
+    ("northern-rockies", -118.0, 41.0),
+]
+
+# Written as a 256-colour PNG, for the same reason the measured frames are: a
+# third of the bytes, and indistinguishable side by side because the picture
+# only ever contains ramp colours at a fixed set of alphas.
+PALETTE_COLOURS = 256
+
+
+def cells():
+    """Every forecast cell as (id, bbox), west/south/east/north."""
+    return [(name, (west, south, west + FORECAST_CELL_SPAN[0],
+                    south + FORECAST_CELL_SPAN[1]))
+            for name, west, south in FORECAST_CELL_ORIGINS]
 # Finer than the model's 3 km grid (this is ~1.4 km/px), because the app
 # upscales a national frame down to one bay and the smoothing has to have
 # something to work with. Going finer than this buys nothing: the information
@@ -314,6 +374,8 @@ def valid_time(meta):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="out", help="directory to write frames into")
+    ap.add_argument("--only", default="", help="render just this cell, for checking one place")
+    ap.add_argument("--limit", type=int, default=0, help="render at most this many lead times")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
@@ -322,28 +384,44 @@ def main():
         tzinfo=datetime.timezone.utc)
     print(f"HRRR run {run_at.isoformat()}")
 
+    wanted_cells = [c for c in cells() if not args.only or c[0] == args.only]
+    leads = FORECAST_MINUTES[:args.limit] if args.limit else FORECAST_MINUTES
+
     frames, downloaded = [], 0
-    for minutes in FORECAST_MINUTES:
+    for minutes in leads:
         try:
             values, meta, nbytes = read_refc(day, run, minutes)
-            image = render(values, meta, CONUS_BBOX, FRAME_SIZE)
-            name = f"refc-{minutes:04d}.png"
-            image.save(os.path.join(args.out, name), optimize=True)
             downloaded += nbytes
-            # The model's own valid time, not run + lead. If those ever
-            # disagree the file is right and the arithmetic is wrong.
-            when = valid_time(meta)
-            frames.append({
-                "leadMinutes": minutes,
-                "validTime": when.isoformat().replace("+00:00", "Z") if when else None,
-                "image": name,
-            })
-            size_kb = os.path.getsize(os.path.join(args.out, name)) / 1024
-            print(f"  +{minutes:3d} min  {nbytes/1e6:.2f} MB in  ->  {size_kb:5.0f} KB  {name}")
         except Exception as e:
             # Absent, never substituted. A missing step is a thing the app has
             # to be able to say out loud.
             print(f"  +{minutes:3d} min  SKIPPED: {e}", file=sys.stderr)
+            continue
+
+        # The model's own valid time, not run + lead. If those ever disagree
+        # the file is right and the arithmetic is wrong.
+        when = valid_time(meta)
+        written = 0
+        for name, bbox in wanted_cells:
+            try:
+                image = render(values, meta, bbox, FORECAST_CELL_SIZE)
+                image_name = f"{name}-refc-{minutes:04d}.png"
+                image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE) \
+                     .save(os.path.join(args.out, image_name), optimize=True)
+                frames.append({
+                    "leadMinutes": minutes,
+                    "cell": name,
+                    "validTime": when.isoformat().replace("+00:00", "Z") if when else None,
+                    "image": image_name,
+                })
+                written += 1
+            except Exception as e:
+                print(f"  +{minutes:3d} min {name}: SKIPPED: {e}", file=sys.stderr)
+
+        kb = sum(os.path.getsize(os.path.join(args.out, f"{n}-refc-{minutes:04d}.png"))
+                 for n, _ in wanted_cells
+                 if os.path.exists(os.path.join(args.out, f"{n}-refc-{minutes:04d}.png"))) / 1024
+        print(f"  +{minutes:3d} min  {nbytes/1e6:.2f} MB in  ->  {written} cells, {kb:5.0f} KB")
 
     if not frames:
         raise SystemExit("no frames rendered; leaving the previous manifest in place")
@@ -355,15 +433,16 @@ def main():
         "runTime": run_at.isoformat().replace("+00:00", "Z"),
         "generatedAt": datetime.datetime.now(datetime.timezone.utc)
             .isoformat(timespec="seconds").replace("+00:00", "Z"),
-        "bbox": {"west": CONUS_BBOX[0], "south": CONUS_BBOX[1],
-                 "east": CONUS_BBOX[2], "north": CONUS_BBOX[3]},
-        "size": {"width": FRAME_SIZE[0], "height": FRAME_SIZE[1]},
+        "size": {"width": FORECAST_CELL_SIZE[0], "height": FORECAST_CELL_SIZE[1]},
         "dbzFloor": RAMP[0][0],
+        "cells": [{"id": name,
+                   "bbox": {"west": b[0], "south": b[1], "east": b[2], "north": b[3]}}
+                  for name, b in wanted_cells],
         "frames": frames,
     }
     with open(os.path.join(args.out, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=1)
-    print(f"{len(frames)}/{len(FORECAST_MINUTES)} frames, "
+    print(f"{len(leads)} lead times x {len(wanted_cells)} cells = {len(frames)} frames, "
           f"{downloaded/1e6:.1f} MB pulled from NOMADS")
 
 

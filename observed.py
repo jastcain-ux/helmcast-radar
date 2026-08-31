@@ -100,10 +100,15 @@ CELL_ORIGINS = [
     ("socal",        -121.0, 31.5), ("central-ca",   -124.0, 34.0),
     ("norcal",       -125.0, 37.0), ("oregon",       -126.0, 40.0),
     ("washington",   -126.0, 43.0), ("puget",        -125.0, 46.0),
-    # Great Lakes
-    ("lake-michigan", -89.0, 41.0), ("lake-superior", -92.0, 45.0),
-    ("lake-huron",    -85.0, 43.0), ("lake-erie",     -83.0, 41.0),
-    ("lake-ontario",  -79.0, 42.5),
+    # Great Lakes. Superior takes two cells and Erie starts a degree further
+    # west than it first did: at -92/45 and -83/41 the layout missed Duluth,
+    # Whitefish Bay, Toledo and the whole western basin of Erie — four pieces
+    # of heavily boated water, each of which fell back to NOAA's tiles
+    # without anything on screen saying why. `test_cells.py` is the guard.
+    ("lake-michigan",   -89.0, 41.0),
+    ("lake-superior-w", -93.0, 45.0), ("lake-superior-e", -88.0, 45.5),
+    ("lake-huron",      -85.0, 43.0), ("lake-erie",       -84.0, 41.0),
+    ("lake-ontario",    -79.0, 42.5),
 ]
 
 

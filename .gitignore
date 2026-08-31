@@ -1,2 +1,7 @@
-out/
-__pycache__/
+# The rendered frames travel in the Actions cache, not in git.
+#
+# They were committed once, which grew .git to 452 MB in eight commits and
+# would have reached ~880 MB a day once the forecast half was cut into cells.
+# Git keeps every version of a file that changes every hour, so that never
+# comes back down.
+public/

@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""The cell layouts must cover the water Helmcast serves.
+
+A gap here does not fail loudly, which is exactly why it needs a test. The
+app falls back — the measured half to NOAA's tiles, the forecast half to the
+NWS gust field — and a flat blue wash has twice been mistaken for the radar
+being broken. Nothing in a rendered frame tells you a boater's own bay fell
+between two cells; only this does.
+
+Run with: python -m unittest discover tools/hrrr-radar
+"""
+import unittest
+
+import observed
+import render
+
+# Coastal water, the Great Lakes, and the inland reservoirs the app supports
+# since lakes were brought into scope. Not a sample: these are the spots the
+# project has actually measured against, plus the largest recreational lakes
+# in each region.
+SPOTS = [
+    # Gulf
+    ("Galveston Bay", 29.30, -94.80), ("Clear Lake", 29.55, -95.05),
+    ("Corpus Christi", 27.80, -97.40), ("Pensacola Pass", 30.33, -87.31),
+    ("Mobile Bay", 30.40, -88.00), ("New Orleans", 29.30, -89.40),
+    ("Tampa Bay", 27.80, -82.60),
+    # Atlantic
+    ("Key West", 24.55, -81.80), ("Miami", 25.77, -80.13),
+    ("Vero Beach", 27.64, -80.37), ("Jacksonville", 30.35, -81.40),
+    ("Charleston", 32.75, -79.90), ("Cape Hatteras", 35.25, -75.50),
+    ("Chesapeake Bay", 38.00, -76.20), ("Delaware Bay", 39.00, -75.20),
+    ("Long Island Sound", 41.10, -72.90), ("Cape Cod", 41.70, -70.30),
+    ("Portland ME", 43.65, -70.25),
+    # Great Lakes
+    ("Lake Erie west", 41.80, -83.30), ("Lake Erie east", 42.50, -79.50),
+    ("Lake Ontario", 43.60, -77.00), ("Lake Michigan", 43.00, -87.00),
+    ("Lake Michigan south", 41.80, -87.40), ("Green Bay", 44.90, -87.60),
+    ("Lake Huron", 44.50, -82.50), ("Lake Superior west", 46.80, -91.50),
+    ("Lake Superior east", 47.30, -86.00),
+    # Pacific
+    ("Puget Sound", 47.60, -122.40), ("Columbia River", 46.20, -123.80),
+    ("Coos Bay", 43.40, -124.30), ("San Francisco Bay", 37.80, -122.40),
+    ("Monterey", 36.60, -121.90), ("Santa Barbara", 34.40, -119.70),
+    ("San Diego", 32.70, -117.20),
+]
+
+# Inland reservoirs. The forecast half must reach these — Helmcast supports
+# lakes, and a boater on Lake Texoma is as entitled to a forecast picture as
+# one on the Gulf. The measured half does not cover them and falls back to
+# NOAA's tiles, which is a real picture rather than a wash.
+LAKES = [
+    ("Lake Houston", 29.95, -95.13), ("Lake Livingston", 30.75, -95.10),
+    ("Sam Rayburn", 31.10, -94.10), ("Lake Texoma", 33.90, -96.60),
+    ("Lake of the Ozarks", 38.10, -92.70), ("Kentucky Lake", 36.80, -88.10),
+    ("Table Rock", 36.60, -93.30), ("Lake Norman", 35.50, -80.90),
+    ("Lake Lanier", 34.20, -84.05), ("Lake Murray SC", 34.05, -81.25),
+    ("Lake Mead", 36.10, -114.40), ("Lake Powell", 37.00, -111.20),
+    ("Lake Havasu", 34.50, -114.30), ("Lake Tahoe", 39.10, -120.00),
+    ("Flathead Lake", 47.90, -114.10), ("Great Salt Lake", 41.10, -112.50),
+]
+
+
+def covering(cells, lat, lon):
+    return [name for name, (w, s, e, n) in cells
+            if w <= lon <= e and s <= lat <= n]
+
+
+class ForecastCells(unittest.TestCase):
+
+    def test_cells_cover_the_water_the_app_serves(self):
+        cells = render.cells()
+        for name, lat, lon in SPOTS + LAKES:
+            self.assertTrue(covering(cells, lat, lon),
+                            f"{name} falls between the forecast cells")
+
+    def test_a_spot_outside_conus_has_no_cell(self):
+        """HRRR does not cover Hawaii, and the app says so differently from
+        'no frame'. A cell reaching out there would make that a lie."""
+        cells = render.cells()
+        self.assertFalse(covering(cells, 21.30, -157.85), "Honolulu")
+        self.assertFalse(covering(cells, 61.20, -149.90), "Anchorage")
+
+    def test_cells_are_no_finer_than_the_model(self):
+        """HRRR is a 3 km grid — roughly 37 px per degree. Past about 200
+        px/degree the extra pixels carry no extra information and cost bytes
+        on a boater's connection."""
+        px_per_degree = render.FORECAST_CELL_SIZE[1] / render.FORECAST_CELL_SPAN[1]
+        self.assertLessEqual(px_per_degree, 220)
+        self.assertGreaterEqual(px_per_degree, 100, "too coarse to smooth cleanly")
+
+
+class MeasuredCells(unittest.TestCase):
+
+    def test_cells_cover_the_coast_and_the_great_lakes(self):
+        cells = observed.cells()
+        for name, lat, lon in SPOTS:
+            self.assertTrue(covering(cells, lat, lon),
+                            f"{name} falls between the measured cells")
+
+    def test_cells_are_finer_than_the_forecast_ones(self):
+        """MRMS is a 1 km mosaic against HRRR's 3 km model, so the measured
+        half earns the extra pixels and the forecast half does not."""
+        measured = observed.CELL_SIZE[1] / observed.CELL_SPAN[1]
+        forecast = render.FORECAST_CELL_SIZE[1] / render.FORECAST_CELL_SPAN[1]
+        self.assertGreater(measured, forecast * 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

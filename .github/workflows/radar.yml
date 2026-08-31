@@ -15,8 +15,21 @@
 # replaces the whole site, so a separate measured job and forecast job would
 # each publish a site missing the other's frames — whichever finished last
 # would win and the other half of the timeline would vanish until its next
-# run. Everything is rendered into a committed `public/` directory and
-# deployed together.
+# run. Everything is rendered into one `public/` directory and deployed
+# together.
+#
+# `public/` is CARRIED IN THE ACTIONS CACHE, not committed. It used to be
+# committed, which is how the run kept its state between ticks — and it grew
+# the repository by every byte it ever published. Eight commits of frames had
+# already made `.git` 452 MB, and cutting the forecast half into regional
+# cells raised a run from 9 MB to 37 MB: roughly 880 MB of new objects a day,
+# which reaches GitHub's limits in under a week and never comes back down,
+# because git keeps every version of a file that changes every hour.
+#
+# The cache holds exactly the state the run needs and nothing historical. If
+# it is ever evicted the job simply re-renders, which is what it already does
+# for a missing frame — so the failure mode is one slower run, not a broken
+# site. Nothing here is source: the scripts live in git, the pictures do not.
 #
 # Setup is in ../README.md.
 name: Helmcast radar
@@ -35,7 +48,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -53,6 +66,18 @@ jobs:
 
       - name: Install
         run: pip install -r requirements.txt
+
+      # The frames from the last run. The key rolls every run so each one
+      # saves a fresh entry, and `restore-keys` picks up the newest previous
+      # one — a fixed key would be written once and never updated again.
+      # GitHub evicts these least-recently-used against its own 10 GB
+      # allowance, so the history bounds itself instead of accumulating.
+      - name: Restore the published frames
+        uses: actions/cache/restore@v4
+        with:
+          path: public
+          key: helmcast-radar-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: helmcast-radar-
 
       # Measured radar, every run. Cheap: one or two new frames per run,
       # about 1.5 MB in and 400 KB out each.
@@ -94,15 +119,15 @@ jobs:
       # Frames older than the timeline reaches are dead weight in the repo and
       # on the CDN. Keeping them would grow the site without bound.
       - name: Prune frames the timeline can no longer reach
-        run: python prune.py --dir public/observed
-
-      - name: Commit
         run: |
-          git config user.name "helmcast-radar"
-          git config user.email "noreply@github.com"
-          git add public
-          git diff --quiet --cached || git commit -m "radar frames $(date -u +%FT%TZ)"
-          git push
+          python prune.py --dir public/observed
+          python prune.py --dir public
+
+      - name: Carry the frames to the next run
+        uses: actions/cache/save@v4
+        with:
+          path: public
+          key: helmcast-radar-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Publish
         uses: actions/upload-pages-artifact@v3
