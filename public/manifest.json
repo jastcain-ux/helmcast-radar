@@ -3,7 +3,7 @@
  "field": "composite reflectivity",
  "source": "NOAA NCEP, public domain",
  "runTime": "2026-08-31T06:00:00Z",
- "generatedAt": "2026-08-31T07:26:25Z",
+ "generatedAt": "2026-08-31T07:37:26Z",
  "bbox": {
   "west": -127.0,
   "south": 21.0,
