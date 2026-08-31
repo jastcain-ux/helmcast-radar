@@ -1,0 +1,107 @@
+# Renders Helmcast's radar frames — measured every ten minutes, forecast hourly.
+#
+# This file belongs in a SEPARATE PUBLIC repository, not in the app repo.
+# Two reasons, both practical:
+#
+#   - Actions minutes. Private repos get 2,000 free minutes a month; a
+#     ten-minute job would eat that in days. Public repos get unlimited.
+#   - GitHub Pages. Free Pages hosting only serves public repos, and Pages is
+#     what puts the frames behind a CDN at no cost.
+#
+# Nothing private is exposed by making it public. It is a script that reads
+# public-domain NOAA data and writes weather pictures. No app source, no keys.
+#
+# ONE workflow, not two, and that is not a tidiness choice. A Pages deploy
+# replaces the whole site, so a separate measured job and forecast job would
+# each publish a site missing the other's frames — whichever finished last
+# would win and the other half of the timeline would vanish until its next
+# run. Everything is rendered into a committed `public/` directory and
+# deployed together.
+#
+# Setup is in ../README.md.
+name: Helmcast radar
+
+on:
+  schedule:
+    # Every ten minutes, matching the measured timeline's own step. MRMS
+    # publishes a frame every two minutes; there is no point pulling faster
+    # than the app can show.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+# One at a time. Two overlapping runs would race to commit the same frames.
+concurrency:
+  group: helmcast-radar
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      # Measured radar, every run. Cheap: one or two new frames per run,
+      # about 1.5 MB in and 400 KB out each.
+      - name: Render measured frames
+        run: python observed.py --out public/observed
+
+      # Forecast radar, only when the published manifest has gone stale.
+      # HRRR runs hourly and takes roughly 50 minutes to publish its full
+      # window, so re-rendering on every ten-minute tick would pull ~16 MB for
+      # frames that have not changed.
+      - name: Render forecast frames if the run has moved on
+        run: |
+          manifest=public/manifest.json
+          stale=1
+          if [ -f "$manifest" ]; then
+            age=$(( $(date -u +%s) - $(date -u -d "$(python -c "
+          import json;print(json.load(open('$manifest'))['runTime'])")" +%s) ))
+            [ "$age" -lt 5400 ] && stale=0
+          fi
+          if [ "$stale" = 1 ]; then
+            python render.py --out public
+          else
+            echo "forecast manifest is current; skipping"
+          fi
+
+      # Frames older than the timeline reaches are dead weight in the repo and
+      # on the CDN. Keeping them would grow the site without bound.
+      - name: Prune frames the timeline can no longer reach
+        run: python prune.py --dir public/observed
+
+      - name: Commit
+        run: |
+          git config user.name "helmcast-radar"
+          git config user.email "noreply@github.com"
+          git add public
+          git diff --quiet --cached || git commit -m "radar frames $(date -u +%FT%TZ)"
+          git push
+
+      - name: Publish
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: render
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -89,3 +89,43 @@ HRRR is 3 km. It will show a squall line crossing the bay, and it will
 sometimes put that line in the wrong place or an hour off. It gets the same
 treatment as every other forecast in this app: its own palette, labelled as
 forecast, never blended into the measured half of the timeline.
+
+
+## observed.py — the measured half
+
+`render.py` draws the forecast frames. `observed.py` draws the **measured**
+ones, from NOAA MRMS composite reflectivity, and exists because of a look
+rather than a gap in the data.
+
+The measured radar used to be NOAA's nowCOAST WMS: someone else's pre-drawn
+tiles, painted nearest-neighbour with hard colour bands. At the zoom a boater
+uses it read as a grid of coloured squares. That is not a resolution problem —
+a sharper source would only have given sharper squares — it is a rendering
+problem, and the fix was already in this directory. `observed.py` imports
+`render.colourise` unchanged and gets the same cubic sampling, continuous ramp
+and soft edge that made the forecast frames stop looking broken.
+
+Two things fall out of that beyond the picture:
+
+- **The palettes cannot drift.** They used to be matched by hand, and when they
+  drifted rain appeared to thin out exactly at "now" as the scrubber crossed
+  over. One renderer means one ramp and one floor.
+- **Frames are regional cells, not one national picture.** That was the first
+  version and it failed at the only zoom that matters: a 35-mile view out of a
+  country-wide frame is 46 pixels. Cells are 5 x 4 degrees at 2400 px, 25 of
+  them over the coasts, the Great Lakes and the Gulf bays, so the same view is
+  269 px and reads clean — and a cell is ~75 KB against the national frame's
+  400 KB.
+
+Frames are 256-colour PNGs: 398 KB against 1,593 KB for RGBA, and
+indistinguishable side by side, because the picture only ever contains ramp
+colours at a fixed set of alphas.
+
+```bash
+python observed.py --out public/observed      # 13 steps x 25 cells, 2 hours
+python observed.py --only florida-ne --limit 1   # one cell, for checking a place
+python prune.py --dir public/observed         # drop anything the manifest dropped
+```
+
+Frames already on disk are reused, so a ten-minute run pulls one new frame
+rather than re-rendering the lot.
