@@ -2,7 +2,7 @@
  "product": "MRMS MergedReflectivityQCComposite",
  "field": "composite reflectivity",
  "source": "NOAA MRMS, public domain",
- "generatedAt": "2026-08-31T14:26:58Z",
+ "generatedAt": "2026-08-31T14:31:57Z",
  "stepMinutes": 10,
  "dbzFloor": 5,
  "size": {
@@ -237,131 +237,6 @@
   }
  ],
  "frames": [
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "downeast",
-   "image": "downeast-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "southern-ne",
-   "image": "southern-ne-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "mid-atlantic",
-   "image": "mid-atlantic-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "carolinas",
-   "image": "carolinas-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "sc-georgia",
-   "image": "sc-georgia-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "florida-ne",
-   "image": "florida-ne-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "florida-se",
-   "image": "florida-se-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "florida-sw",
-   "image": "florida-sw-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "florida-nw",
-   "image": "florida-nw-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "alabama-miss",
-   "image": "alabama-miss-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "louisiana",
-   "image": "louisiana-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "houston-galv",
-   "image": "houston-galv-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "texas-central",
-   "image": "texas-central-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "texas-south",
-   "image": "texas-south-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "socal",
-   "image": "socal-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "central-ca",
-   "image": "central-ca-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "norcal",
-   "image": "norcal-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "oregon",
-   "image": "oregon-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "washington",
-   "image": "washington-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "puget",
-   "image": "puget-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "lake-michigan",
-   "image": "lake-michigan-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "lake-superior",
-   "image": "lake-superior-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "lake-huron",
-   "image": "lake-huron-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "lake-erie",
-   "image": "lake-erie-20260831T1218Z.png"
-  },
-  {
-   "observedTime": "2026-08-31T12:18:40Z",
-   "cell": "lake-ontario",
-   "image": "lake-ontario-20260831T1218Z.png"
-  },
   {
    "observedTime": "2026-08-31T12:28:42Z",
    "cell": "downeast",
@@ -1861,6 +1736,131 @@
    "observedTime": "2026-08-31T14:18:40Z",
    "cell": "lake-ontario",
    "image": "lake-ontario-20260831T1418Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "downeast",
+   "image": "downeast-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "southern-ne",
+   "image": "southern-ne-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "mid-atlantic",
+   "image": "mid-atlantic-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "carolinas",
+   "image": "carolinas-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "sc-georgia",
+   "image": "sc-georgia-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "florida-ne",
+   "image": "florida-ne-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "florida-se",
+   "image": "florida-se-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "florida-sw",
+   "image": "florida-sw-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "florida-nw",
+   "image": "florida-nw-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "alabama-miss",
+   "image": "alabama-miss-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "louisiana",
+   "image": "louisiana-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "houston-galv",
+   "image": "houston-galv-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "texas-central",
+   "image": "texas-central-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "texas-south",
+   "image": "texas-south-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "socal",
+   "image": "socal-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "central-ca",
+   "image": "central-ca-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "norcal",
+   "image": "norcal-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "oregon",
+   "image": "oregon-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "washington",
+   "image": "washington-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "puget",
+   "image": "puget-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "lake-michigan",
+   "image": "lake-michigan-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "lake-superior",
+   "image": "lake-superior-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "lake-huron",
+   "image": "lake-huron-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "lake-erie",
+   "image": "lake-erie-20260831T1428Z.png"
+  },
+  {
+   "observedTime": "2026-08-31T14:28:33Z",
+   "cell": "lake-ontario",
+   "image": "lake-ontario-20260831T1428Z.png"
   }
  ]
 }
