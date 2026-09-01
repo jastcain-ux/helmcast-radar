@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The cell layouts must cover the water Helmcast serves.
+"""The cell layouts must cover the water SeaWise serves.
 
 A gap here does not fail loudly, which is exactly why it needs a test. The
 app falls back — the measured half to NOAA's tiles, the forecast half to the
@@ -44,7 +44,7 @@ SPOTS = [
     ("San Diego", 32.70, -117.20),
 ]
 
-# Inland reservoirs. The forecast half must reach these — Helmcast supports
+# Inland reservoirs. The forecast half must reach these — SeaWise supports
 # lakes, and a boater on Lake Texoma is as entitled to a forecast picture as
 # one on the Gulf. The measured half does not cover them and falls back to
 # NOAA's tiles, which is a real picture rather than a wash.

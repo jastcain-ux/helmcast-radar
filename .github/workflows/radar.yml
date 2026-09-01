@@ -1,4 +1,4 @@
-# Renders Helmcast's radar frames — measured every ten minutes, forecast hourly.
+# Renders SeaWise's radar frames — measured every ten minutes, forecast hourly.
 #
 # This file belongs in a SEPARATE PUBLIC repository, not in the app repo.
 # Two reasons, both practical:
@@ -32,7 +32,7 @@
 # site. Nothing here is source: the scripts live in git, the pictures do not.
 #
 # Setup is in ../README.md.
-name: Helmcast radar
+name: SeaWise radar
 
 on:
   schedule:
@@ -44,6 +44,10 @@ on:
 
 # One at a time. Two overlapping runs would race to commit the same frames.
 concurrency:
+  # Still spelled helmcast, and deliberately. The cache key is what carries
+  # `public/` between runs, and changing it orphans every published frame and
+  # forces a full re-render — a visible gap in the timeline for the sake of a
+  # label nobody sees. The repo is seawise-radar; this string is just a key.
   group: helmcast-radar
   cancel-in-progress: false
 
@@ -115,6 +119,24 @@ jobs:
           else
             echo "forecast manifest is current; skipping"
           fi
+
+      # Observed lightning, every run. NOAA's GLM buckets publish a file every
+      # 20 seconds, and the script carries forward what it published last time
+      # so a ten-minute tick downloads ten minutes of files rather than the
+      # whole thirty-minute window three times over — the same reuse the radar
+      # frames already get.
+      #
+      # It writes into the same `public/` as the radar, and is deliberately in
+      # THIS workflow rather than its own. A Pages deploy replaces the whole
+      # site: a separate lightning job would publish a site with no radar in
+      # it, and the radar job would then publish one with no lightning, each
+      # wiping the other every few minutes.
+      #
+      # A failure here must not take the radar down with it. Lightning is one
+      # layer; the frames are the screen.
+      - name: Render observed lightning
+        continue-on-error: true
+        run: python lightning.py --minutes 30 --out public/lightning
 
       # Frames older than the timeline reaches are dead weight in the repo and
       # on the CDN. Keeping them would grow the site without bound.

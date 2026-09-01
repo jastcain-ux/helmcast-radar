@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Render NOAA HRRR forecast reflectivity to PNG frames Helmcast can draw.
+Render NOAA HRRR forecast reflectivity to PNG frames SeaWise can draw.
 
 Why this exists
 ---------------
@@ -41,7 +41,7 @@ from pyproj import CRS, Transformer
 NOMADS = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/hrrr/prod"
 MERCATOR_R = 20037508.342789244
 
-# The frames the app scrubs through. HRRR runs out to 18 hours; Helmcast shows
+# The frames the app scrubs through. HRRR runs out to 18 hours; SeaWise shows
 # six, matching the radar timeline it already has.
 # Every 15 minutes out to 8 hours.
 #
@@ -103,7 +103,7 @@ FORECAST_CELL_ORIGINS = [
     ("socal",          -124.0, 30.0),
     ("norcal",         -128.0, 36.0),
     ("northwest",      -128.0, 42.0),
-    # Inland. Helmcast supports lakes and reservoirs, and a boater on Lake
+    # Inland. SeaWise supports lakes and reservoirs, and a boater on Lake
     # Texoma or Lake Mead is as entitled to a forecast picture as one on the
     # Gulf. Without these the forecast half falls back to the wind field —
     # a flat blue wash that has twice been mistaken for the radar being
