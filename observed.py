@@ -76,13 +76,23 @@ HISTORY_MINUTES = 120
 # 134 px and still soft; at 2400 it is 269 px and reads clean. The cost of the
 # difference is 107 KB against 42 — and it is still *lighter* than the 400 KB
 # national frame it replaces, which could not serve this zoom at all.
-from cells import CELL_ORIGINS, CELL_SIZE, CELL_SPAN  # noqa: F401
+from cells import (CELL_ORIGINS, CELL_SIZE, CELL_SPAN,  # noqa: F401
+                   NATIONAL_BBOX, NATIONAL_ID, NATIONAL_SIZE)
 
 
 def cells():
-    """Every cell as (id, bbox) with bbox west/south/east/north."""
-    return [(name, (west, south, west + CELL_SPAN[0], south + CELL_SPAN[1]))
-            for name, west, south in CELL_ORIGINS]
+    """Every cell as (id, bbox) with bbox west/south/east/north.
+
+    The national frame comes last, and is the same whole-domain picture the
+    forecast half publishes. NOAA's own national tiles served this zoom for one
+    release and could not animate: every step is a different time, so each one
+    refetched twenty-odd tiles over the network and the map flashed once per
+    step. One image does not.
+    """
+    out = [(name, (west, south, west + CELL_SPAN[0], south + CELL_SPAN[1]))
+           for name, west, south in CELL_ORIGINS]
+    out.append((NATIONAL_ID, NATIONAL_BBOX))
+    return out
 
 # Written as a 256-colour PNG rather than RGBA.
 #
@@ -272,7 +282,11 @@ def main():
                 reused += 1
                 continue
             try:
-                image = render(values, meta, bbox, size)
+                # The national frame is the model's own resolution rather
+                # than a cell's: at continental zoom the extra pixels carry
+                # nothing and cost a boater bytes.
+                image = render(values, meta, bbox,
+                               NATIONAL_SIZE if name == NATIONAL_ID else size)
                 image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE) \
                      .save(path, optimize=True)
                 frames.append({"observedTime": when.isoformat().replace("+00:00", "Z"),
