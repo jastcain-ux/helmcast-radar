@@ -164,6 +164,14 @@ NATIONAL_WIND_STEP_DEG = 0.2
 # 200 px/degree, the density the forecast half already publishes at: sharp
 # enough that a regional view does not look upscaled, and no finer than the
 # 3 km model can justify.
+# Ids are prefixed `wide-`, not `mid-`.
+#
+# `mid-atlantic` is already a close cell and `mid-south` a forecast one, so a
+# `mid-` prefix could not be told from a real name — and the renderer picks a
+# frame's pixel size by that prefix, so a close cell called `mid-atlantic`
+# would have been published at the middle tier's lower resolution. Caught
+# before it rendered, by a watcher counting `mid-*` ids and finding one that
+# was not a middle-tier frame at all.
 MID_SPAN = FORECAST_CELL_SPAN
 MID_ORIGINS = FORECAST_CELL_ORIGINS
 MID_SIZE = FORECAST_CELL_SIZE

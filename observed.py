@@ -99,7 +99,7 @@ def _render_one(cell):
         # model's own resolution.
         if name == NATIONAL_ID:
             px = NATIONAL_SIZE
-        elif name.startswith("mid-"):
+        elif name.startswith("wide-"):
             px = MID_SIZE
         else:
             px = _SIZE
@@ -125,7 +125,7 @@ def cells():
     # The middle tier, prefixed so its ids cannot collide with a close cell's.
     # A view too wide for a close cell lands here instead of falling all the way
     # to the national frame, which is blocky over a few hundred miles.
-    out += [(f"mid-{name}", (west, south, west + MID_SPAN[0], south + MID_SPAN[1]))
+    out += [(f"wide-{name}", (west, south, west + MID_SPAN[0], south + MID_SPAN[1]))
             for name, west, south in MID_ORIGINS]
     out.append((NATIONAL_ID, NATIONAL_BBOX))
     return out

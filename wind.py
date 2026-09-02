@@ -163,7 +163,7 @@ def main():
         # than falling to the national frame. Half the close cells' resolution,
         # because at that zoom the field is read for where the air is going
         # rather than for a number off a pixel.
-        boxes += [(f"mid-{n}", w, s2, w + MID_SPAN[0], s2 + MID_SPAN[1],
+        boxes += [(f"wide-{n}", w, s2, w + MID_SPAN[0], s2 + MID_SPAN[1],
                    MID_WIND_STEP_DEG)
                   for n, w, s2 in MID_ORIGINS]
         boxes.append((NATIONAL_ID, NATIONAL_BBOX[0], NATIONAL_BBOX[1],
