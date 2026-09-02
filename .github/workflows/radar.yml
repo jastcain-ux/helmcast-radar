@@ -104,10 +104,24 @@ jobs:
         run: |
           if python - <<'EOF'
           import datetime, json, os, sys
+          sys.path.insert(0, ".")
+          import cells as layout
           path = "public/manifest.json"
           if not os.path.exists(path):
               sys.exit(0)                      # nothing published yet: render
-          run = json.load(open(path))["runTime"].replace("Z", "+00:00")
+          published = json.load(open(path))
+          # A changed cell list must re-render, whatever the age says.
+          #
+          # Without this the layout only reached the site when the age gate
+          # happened to fire, so adding cells for the deep Gulf and the inland
+          # lakes published nothing for over an hour and looked like a broken
+          # workflow. The manifest should describe the code, and this is what
+          # makes that true rather than eventually true.
+          want = {n for n, _, _ in layout.FORECAST_CELL_ORIGINS} | {layout.NATIONAL_ID}
+          if {c["id"] for c in published.get("cells", [])} != want:
+              print("cell layout changed; re-rendering")
+              sys.exit(0)
+          run = published["runTime"].replace("Z", "+00:00")
           age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(run)
           sys.exit(0 if age.total_seconds() > 5400 else 1)
           EOF

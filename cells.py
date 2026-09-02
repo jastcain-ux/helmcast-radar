@@ -112,3 +112,34 @@ FORECAST_CELL_ORIGINS = [
     ("northern-plains",-107.0, 42.0),
     ("inland-northwest",-121.0, 43.0),
 ]
+
+
+# --- The national frame -------------------------------------------------
+#
+# One low-resolution frame covering the whole model domain, published beside
+# the regional cells rather than instead of them.
+#
+# Cells exist because a national frame is useless up close: at the zoom a
+# boater reads their own bay, a 4096 px national picture gives about 50 pixels
+# and the phone magnifies that into mush. The reverse is just as true. Nine
+# cells is 15 x 12 degrees and the continental United States is 62 wide, so at
+# continental zoom no practical number of cells covers the view — and blank map
+# reads as clear sky, which is the failure this app exists to prevent.
+#
+# So: cells close in, this far out, chosen by zoom. The app already does
+# exactly that for the measured half, where NOAA's own tiles play this role.
+# HRRR has no such public tile service, which is why we publish it ourselves.
+#
+# **The size is the model, not a guess.** HRRR is a 3 km grid — about 37 pixels
+# per degree — and this is 38.7. Going finer would cost a boater bytes to carry
+# no extra information; going coarser would throw some away.
+NATIONAL_ID = "national"
+NATIONAL_BBOX = (-127.0, 21.0, -65.0, 51.0)
+NATIONAL_SIZE = (2400, 1160)
+
+# Wind is a smooth field and is read at continental zoom to see where the air
+# is going, not to read a number off — so it is published far coarser than the
+# regional cells' 0.05 degrees. At 0.2 the national frame is 311 x 151 values
+# against 1241 x 601, which is a sixteenth of the bytes for a picture that
+# looks the same at that scale.
+NATIONAL_WIND_STEP_DEG = 0.2

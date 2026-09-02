@@ -39,7 +39,8 @@ from PIL import Image
 from pyproj import CRS, Transformer
 
 from cells import (FORECAST_CELL_ORIGINS, FORECAST_CELL_SPAN,
-                   FORECAST_CELL_SIZE)
+                   FORECAST_CELL_SIZE, NATIONAL_BBOX, NATIONAL_ID,
+                   NATIONAL_SIZE)
 
 NOMADS = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/hrrr/prod"
 MERCATOR_R = 20037508.342789244
@@ -360,7 +361,14 @@ def main():
         tzinfo=datetime.timezone.utc)
     print(f"HRRR run {run_at.isoformat()}")
 
-    wanted_cells = [c for c in cells() if not args.only or c[0] == args.only]
+    # Regional cells at their own size, plus one national frame at the model's
+    # own resolution. Carried as (name, bbox, size) so the national one can be
+    # a different shape without a second code path.
+    wanted_cells = [(n, b, FORECAST_CELL_SIZE)
+                    for n, b in cells()
+                    if not args.only or n == args.only]
+    if not args.only or args.only == NATIONAL_ID:
+        wanted_cells.append((NATIONAL_ID, NATIONAL_BBOX, NATIONAL_SIZE))
     leads = FORECAST_MINUTES[:args.limit] if args.limit else FORECAST_MINUTES
 
     frames, downloaded = [], 0
@@ -378,9 +386,9 @@ def main():
         # the file is right and the arithmetic is wrong.
         when = valid_time(meta)
         written = 0
-        for name, bbox in wanted_cells:
+        for name, bbox, size in wanted_cells:
             try:
-                image = render(values, meta, bbox, FORECAST_CELL_SIZE)
+                image = render(values, meta, bbox, size)
                 image_name = f"{name}-refc-{minutes:04d}.png"
                 image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE) \
                      .save(os.path.join(args.out, image_name), optimize=True)
@@ -395,7 +403,7 @@ def main():
                 print(f"  +{minutes:3d} min {name}: SKIPPED: {e}", file=sys.stderr)
 
         kb = sum(os.path.getsize(os.path.join(args.out, f"{n}-refc-{minutes:04d}.png"))
-                 for n, _ in wanted_cells
+                 for n, _, _ in wanted_cells
                  if os.path.exists(os.path.join(args.out, f"{n}-refc-{minutes:04d}.png"))) / 1024
         print(f"  +{minutes:3d} min  {nbytes/1e6:.2f} MB in  ->  {written} cells, {kb:5.0f} KB")
 
@@ -413,7 +421,7 @@ def main():
         "dbzFloor": RAMP[0][0],
         "cells": [{"id": name,
                    "bbox": {"west": b[0], "south": b[1], "east": b[2], "north": b[3]}}
-                  for name, b in wanted_cells],
+                  for name, b, _ in wanted_cells],
         "frames": frames,
     }
     with open(os.path.join(args.out, "manifest.json"), "w") as f:

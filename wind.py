@@ -24,7 +24,8 @@ from pyproj import CRS, Transformer
 from scipy.ndimage import map_coordinates
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cells import CELL_ORIGINS, CELL_SPAN          # noqa: E402
+from cells import (CELL_ORIGINS, CELL_SPAN, NATIONAL_BBOX,      # noqa: E402
+                   NATIONAL_ID, NATIONAL_WIND_STEP_DEG)
 import render                                       # noqa: E402
 
 # Hourly, not every fifteen minutes. Wind at the radar's cadence would be
@@ -100,7 +101,7 @@ def _key(gid, k):
         return None
 
 
-def sample(values, meta, west, south, east, north):
+def sample(values, meta, west, south, east, north, step=None):
     """Sample the model's Lambert grid onto a regular lat/lon grid.
 
     Bilinear rather than the cubic the reflectivity renderer uses. Cubic is
@@ -117,8 +118,9 @@ def sample(values, meta, west, south, east, north):
     x0, y0 = to_lcc.transform(meta["longitudeOfFirstGridPointInDegrees"],
                               meta["latitudeOfFirstGridPointInDegrees"])
 
-    nx = int(round((east - west) / STEP_DEG)) + 1
-    ny = int(round((north - south) / STEP_DEG)) + 1
+    step = step or STEP_DEG
+    nx = int(round((east - west) / step)) + 1
+    ny = int(round((north - south) / step)) + 1
     lons = np.linspace(west, east, nx)
     # North-first, so index 0 is the top-left pixel the way an image reads.
     lats = np.linspace(north, south, ny)
@@ -149,10 +151,19 @@ def main():
             continue
         total_in += n1 + n2
 
-        for name, west, south in CELL_ORIGINS:
-            east, north = west + CELL_SPAN[0], south + CELL_SPAN[1]
-            gu, nx, ny = sample(u, meta, west, south, east, north)
-            gv, _, _ = sample(v, meta, west, south, east, north)
+        # Regional cells, plus one national frame far coarser than they are.
+        # Nine cells is 15 x 12 degrees and the country is 62 wide, so zoomed
+        # right out the field stopped at a hard rectangle with bare map beyond
+        # it — which reads as calm rather than as absent. Found on Jason's
+        # phone 2026-09-01.
+        boxes = [(n, w, s2, w + CELL_SPAN[0], s2 + CELL_SPAN[1], None)
+                 for n, w, s2 in CELL_ORIGINS]
+        boxes.append((NATIONAL_ID, NATIONAL_BBOX[0], NATIONAL_BBOX[1],
+                      NATIONAL_BBOX[2], NATIONAL_BBOX[3], NATIONAL_WIND_STEP_DEG))
+
+        for name, west, south, east, north, step in boxes:
+            gu, nx, ny = sample(u, meta, west, south, east, north, step)
+            gv, _, _ = sample(v, meta, west, south, east, north, step)
 
             # Metres per second out of HRRR; knots is what this app stores and
             # what every threshold in the rating engine is written in.
@@ -189,7 +200,7 @@ def main():
     with open(os.path.join(args.out, "manifest.json"), "w") as f:
         json.dump(manifest, f, separators=(",", ":"))
 
-    print(f"{len(frames)} wind frames over {len(CELL_ORIGINS)} cells")
+    print(f"{len(frames)} wind frames over {len(CELL_ORIGINS)} cells + national")
     print(f"  in {total_in/1048576:.0f} MB, out {total_out/1024:.0f} KB")
 
 
