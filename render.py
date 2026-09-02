@@ -165,9 +165,24 @@ EDGE_FADE_STEPS = 32
 # The ramp is walked as a continuous gradient rather than 14 hard bands, in
 # this many steps across its range. Hard bands drew visible contour edges once
 # a national frame was zoomed to one bay — a staircase in the picture that
-# corresponds to nothing in the weather. 16 steps is indistinguishable from 48
-# on screen and compresses to little more than the banded version did.
-RAMP_STEPS = 24
+# corresponds to nothing in the weather.
+#
+# **24 was not enough, and the claim that 16 looked like 48 was wrong.** It was
+# judged on a national frame, where one step spanned a few pixels. On the
+# middle tier at a one-degree view each step is ~3 dBZ, and where rain varies
+# slowly a single step covers a wide flat area — so the picture became
+# plateaus with hard edges between them. Jason read it as pixelation, and it
+# was: not the 3 km model's, ours. Verified 2026-09-02 by cropping the
+# published texas-inland frame around Livingston at 8x — the gradients inside
+# a step were smooth (the cubic sampling works); the edges between steps were
+# staircases.
+#
+# 96 steps is under 0.8 dBZ apart, below what the eye separates on this ramp.
+# It costs bytes only through the 256-colour palette the PNG is quantised to,
+# which was already merging 24 ramp levels x 32 alpha levels; the picture is
+# the product, and this is not a blur — nothing is averaged, the same value
+# just maps to a nearer colour.
+RAMP_STEPS = 96
 
 
 def _url(day, run, minutes, suffix=""):
@@ -440,6 +455,12 @@ def main():
             .isoformat(timespec="seconds").replace("+00:00", "Z"),
         "size": {"width": FORECAST_CELL_SIZE[0], "height": FORECAST_CELL_SIZE[1]},
         "dbzFloor": RAMP[0][0],
+        # Recorded so the workflow can tell when the picture's own rule changed.
+        # The re-render gate fires on manifest age and on the cell list; a
+        # change to how dBZ becomes colour would otherwise sit unpublished until
+        # the run happened to age out, and every frame meanwhile would be drawn
+        # to the old rule while the code said the new one.
+        "rampSteps": RAMP_STEPS,
         "cells": [{"id": name,
                    "bbox": {"west": b[0], "south": b[1], "east": b[2], "north": b[3]}}
                   for name, b, _ in wanted_cells],

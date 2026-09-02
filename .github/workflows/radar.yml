@@ -131,6 +131,13 @@ jobs:
           if {c["id"] for c in published.get("cells", [])} != want:
               print("cell layout changed; re-rendering")
               sys.exit(0)
+          # The colour rule is part of the picture too. Without this a ramp
+          # change published nothing until the run aged out, and every frame
+          # in between was drawn to the old rule while the code said the new.
+          import render
+          if published.get("rampSteps") != render.RAMP_STEPS:
+              print("ramp changed; re-rendering")
+              sys.exit(0)
           run = published["runTime"].replace("Z", "+00:00")
           age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(run)
           sys.exit(0 if age.total_seconds() > 5400 else 1)
