@@ -92,17 +92,21 @@ CONUS_BBOX = (-127.0, 21.0, -65.0, 50.0)
 # third of the bytes, and indistinguishable side by side because the picture
 # only ever contains ramp colours at a fixed set of alphas.
 PALETTE_COLOURS = 256
-# Median-cut with Floyd-Steinberg dithering, not the fast octree.
+# The fast octree with Floyd-Steinberg dithering.
 #
-# The octree threw the ramp away. After RAMP_STEPS went from 24 to 96 a
-# published forecast frame used 57 palette entries of the 256 available, and
-# the Livingston crop went from 18 distinct colours to 22 — the smoothing the
-# ramp bought was collapsed straight back out at the palette. Octree merges
-# aggressively and badly on slow gradients, which is what a radar fade is.
-# Median-cut spends the 256 entries where the pixels actually are, and dither
-# turns the remaining steps into noise the eye reads as gradient rather than
-# bands. Same 8-bit palette, same bytes; the picture is the product.
-QUANTISER = "mediancut-fs"
+# Median-cut was tried first and failed the whole run: Pillow's median-cut
+# only accepts RGB, and every frame carries an alpha fade. The two manual runs
+# that would have published it both died in the measured step, so nothing
+# published at all — which is the one outcome worse than a coarse palette.
+#
+# The octree is what we had; the dither is new. Octree still chooses the 256
+# entries (badly, on slow gradients — 57 of 256 used on a 96-step frame), but
+# dithering turns what steps remain into noise the eye reads as gradient
+# rather than bands. Legacy constants, not the `Image.Dither` enum, because the
+# runner's Pillow is whatever pip gives it and the enum is newer than some of
+# those. If this still collapses the ramp, the next step is full-colour PNGs
+# for the forecast and nowcast tiers at about three times the bytes.
+QUANTISER = "octree-fs"
 # Named so the workflow re-renders when the colour scheme itself changes.
 PALETTE = "twc-1"
 
@@ -116,8 +120,8 @@ def _render_one(cell):
     name, bbox, size = cell
     try:
         image = render(_VALUES, _META, bbox, size)
-        image.quantize(colors=PALETTE_COLOURS, method=Image.MEDIANCUT,
-                       dither=Image.Dither.FLOYDSTEINBERG) \
+        image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE,
+                       dither=Image.FLOYDSTEINBERG) \
              .save(os.path.join(_OUT, f"{name}-refc-{_MINUTES:04d}.png"), optimize=True)
         return name, True, None
     except Exception as e:            # noqa: BLE001 - reported, never substituted

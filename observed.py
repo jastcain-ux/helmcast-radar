@@ -104,8 +104,8 @@ def _render_one(cell):
         else:
             px = _SIZE
         image = render(_VALUES, _META, bbox, px)
-        image.quantize(colors=PALETTE_COLOURS, method=Image.MEDIANCUT,
-                       dither=Image.Dither.FLOYDSTEINBERG) \
+        image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE,
+                       dither=Image.FLOYDSTEINBERG) \
              .save(os.path.join(_OUT, f"{name}-{_STAMP}.png"), optimize=True)
         return name, True, None
     except Exception as e:            # noqa: BLE001 - reported, never substituted

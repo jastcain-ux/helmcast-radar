@@ -125,8 +125,8 @@ def _render_one(cell):
     try:
         px = NOWCAST_NATIONAL_SIZE if name == NATIONAL_ID else NOWCAST_MID_SIZE
         image = observed.render(_FIELD, _META, bbox, px)
-        image.quantize(colors=observed.PALETTE_COLOURS, method=Image.MEDIANCUT,
-                       dither=Image.Dither.FLOYDSTEINBERG) \
+        image.quantize(colors=observed.PALETTE_COLOURS, method=Image.FASTOCTREE,
+                       dither=Image.FLOYDSTEINBERG) \
              .save(os.path.join(_OUT, f"{name}-{_STAMP}.png"), optimize=True)
         return name, True, None
     except Exception as e:                                  # noqa: BLE001
