@@ -42,10 +42,16 @@ from cells import (MID_ORIGINS, MID_SPAN, MID_SIZE, NATIONAL_BBOX,  # noqa: E402
 LEAD_MINUTES = [15, 30, 45, 60, 75, 90, 105, 120]
 # Pooling before correlation: the mosaic is 0.01 degrees and storm motion is a
 # few kilometres a minute, so tracking at full resolution costs memory for no
-# precision. Sixteen cells is ~16 km per pooled pixel.
-POOL = 16
-# Correlation blocks, in pooled pixels: ~16 of them ~250 km across CONUS.
-BLOCK = 16
+# precision. Four cells is ~4 km per pooled pixel.
+#
+# It was 16, and a dry run on a synthetic storm caught it before the runner
+# did: a true shift of 6 rows and 10 columns came back as 0 and 16, because a
+# phase-correlation peak lands on whole pooled pixels and 16 km is coarser
+# than most storm motion in ten minutes. The runner would have published
+# confidently wrong extrapolations, and nothing on screen would have said so.
+POOL = 4
+# Correlation blocks, in pooled pixels: ~250 km across, ~16 of them over CONUS.
+BLOCK = 64
 # Below this fraction of echo a block cannot be correlated and borrows motion.
 MIN_ECHO_FRACTION = 0.02
 # Wide tier at half resolution; see the module docstring.
@@ -61,57 +67,101 @@ def _pool(field):
 
 
 def _phase_shift(a, b):
-    """Integer shift (dy, dx) that best moves `a` onto `b`, by phase correlation."""
+    """Shift (dy, dx) that best moves `a` onto `b`, by phase correlation,
+    refined to a fraction of a pixel by a parabola through the peak and its
+    two neighbours on each axis."""
     fa, fb = np.fft.fft2(a), np.fft.fft2(b)
     cross = fb * np.conj(fa)
     denom = np.abs(cross)
     denom[denom == 0] = 1.0
     corr = np.fft.ifft2(cross / denom).real
-    peak = np.unravel_index(np.argmax(corr), corr.shape)
-    dy, dx = peak
-    if dy > a.shape[0] // 2: dy -= a.shape[0]
-    if dx > a.shape[1] // 2: dx -= a.shape[1]
+    H, W = corr.shape
+    py, px = np.unravel_index(np.argmax(corr), corr.shape)
+
+    def refine(c_minus, c_0, c_plus):
+        d = c_minus - 2 * c_0 + c_plus
+        return 0.0 if abs(d) < 1e-12 else 0.5 * (c_minus - c_plus) / d
+
+    dy = py + refine(corr[(py - 1) % H, px], corr[py, px], corr[(py + 1) % H, px])
+    dx = px + refine(corr[py, (px - 1) % W], corr[py, px], corr[py, (px + 1) % W])
+    if dy > H / 2: dy -= H
+    if dx > W / 2: dx -= W
     return dy, dx, float(corr.max())
 
 
+# Windows overlap: each 64 pooled pixels wide, centred every 32. A storm then
+# has a window centred near it rather than one it happens to fall into, so its
+# own motion dominates at its own position.
+STRIDE = 32
+
+
 def motion_field(prev, curr, minutes_apart):
-    """Per-pixel (dy, dx) in grid cells per minute, on the full mosaic grid."""
+    """Per-pixel (dy, dx) in grid cells per minute, on the full mosaic grid.
+
+    Each overlapping window that holds enough echo is tracked by phase
+    correlation; the vectors are then spread across the grid by an
+    echo-weighted normalised convolution. Two things that were wrong before,
+    caught by a synthetic two-storm test rather than on the runner:
+
+    - Empty windows used to *borrow* the nearest tracked vector, and the field
+      was then smoothed. A storm in a corner window had neighbours nearer to a
+      different storm, borrowed that storm's opposite motion, and the smoothing
+      averaged its own motion down to a fifth. Weighting by how much echo
+      supported each vector means a storm's own window decides at the storm,
+      and an empty region takes a smooth blend of whatever motion is nearest
+      *in proportion to its evidence* — never a hard borrow.
+    - Windows were tiled edge to edge, so a storm's position relative to a
+      window edge changed the answer. Overlapping windows centre one near it.
+    """
     pa, pb = _pool(prev), _pool(curr)
     H, W = pa.shape
-    vy = np.zeros((H // BLOCK + 1, W // BLOCK + 1))
+    ys = list(range(0, max(H - BLOCK, 0) + 1, STRIDE)) or [0]
+    xs = list(range(0, max(W - BLOCK, 0) + 1, STRIDE)) or [0]
+    vy = np.zeros((len(ys), len(xs)))
     vx = np.zeros_like(vy)
-    ok = np.zeros_like(vy, dtype=bool)
-    for by in range(0, H, BLOCK):
-        for bx in range(0, W, BLOCK):
+    wt = np.zeros_like(vy)
+    for i, by in enumerate(ys):
+        for j, bx in enumerate(xs):
             a = pa[by:by + BLOCK, bx:bx + BLOCK]
             b = pb[by:by + BLOCK, bx:bx + BLOCK]
-            if a.size == 0 or (a > 0).mean() < MIN_ECHO_FRACTION:
+            echo = float((a > 0).mean()) if a.size else 0.0
+            if echo < MIN_ECHO_FRACTION:
                 continue
             dy, dx, _ = _phase_shift(a, b)
-            vy[by // BLOCK, bx // BLOCK] = dy
-            vx[by // BLOCK, bx // BLOCK] = dx
-            ok[by // BLOCK, bx // BLOCK] = True
-    if not ok.any():
+            vy[i, j], vx[i, j], wt[i, j] = dy, dx, echo
+    if not wt.any():
         return None
-    # Blocks with no echo borrow the nearest tracked motion, then the whole
-    # field is smoothed so neighbouring blocks do not tear the picture apart.
-    idx = ndimage.distance_transform_edt(~ok, return_distances=False, return_indices=True)
-    vy, vx = vy[tuple(idx)], vx[tuple(idx)]
-    vy, vx = ndimage.gaussian_filter(vy, 1.0), ndimage.gaussian_filter(vx, 1.0)
-    # Back to the full grid, in cells per minute.
+    # Normalised convolution: weighted vectors over weights, both blurred by
+    # the same kernel, so a tracked window's motion holds exactly at its own
+    # centre and fades into its neighbours' with distance and evidence.
+    sigma = 1.0
+    num_y = ndimage.gaussian_filter(vy * wt, sigma, mode="nearest")
+    num_x = ndimage.gaussian_filter(vx * wt, sigma, mode="nearest")
+    den = ndimage.gaussian_filter(wt, sigma, mode="nearest")
+    # Where no evidence reaches at all, widen until something does rather than
+    # invent zero motion: a field that stops dead at the edge of the tracked
+    # area would tear the picture there.
+    for _ in range(6):
+        gap = den < 1e-6
+        if not gap.any():
+            break
+        num_y = np.where(gap, ndimage.gaussian_filter(num_y, 2.0, mode="nearest"), num_y)
+        num_x = np.where(gap, ndimage.gaussian_filter(num_x, 2.0, mode="nearest"), num_x)
+        den = np.where(gap, ndimage.gaussian_filter(den, 2.0, mode="nearest"), den)
+    den = np.where(den < 1e-9, 1e-9, den)
+    vy, vx = num_y / den, num_x / den
+
+    # Back to the full grid, in cells per minute. Window (i, j) is centred at
+    # pooled (ys[i] + BLOCK/2, xs[j] + BLOCK/2); map that lattice onto the grid.
     scale = POOL / max(minutes_apart, 1.0)
-    zoom = (prev.shape[0] / vy.shape[0], prev.shape[1] / vy.shape[1])
-    vy_full = ndimage.zoom(vy, zoom, order=1) * scale
-    vx_full = ndimage.zoom(vx, zoom, order=1) * scale
-    # `zoom` rounds its output size; the advection indexes this against the
-    # full grid and a one-row mismatch would raise on the runner where it
-    # cannot be seen. Trim or pad to the grid exactly.
-    def fit(a):
-        out = np.zeros(prev.shape, dtype=a.dtype)
-        h, w = min(a.shape[0], prev.shape[0]), min(a.shape[1], prev.shape[1])
-        out[:h, :w] = a[:h, :w]
-        return out
-    return fit(vy_full), fit(vx_full)
+    cy = (np.array(ys) + BLOCK / 2.0) * POOL
+    cx = (np.array(xs) + BLOCK / 2.0) * POOL
+    gy = np.interp(np.arange(prev.shape[0]), cy, np.arange(len(ys)))
+    gx = np.interp(np.arange(prev.shape[1]), cx, np.arange(len(xs)))
+    GY, GX = np.meshgrid(gy, gx, indexing="ij")
+    vy_full = ndimage.map_coordinates(vy, [GY, GX], order=1, mode="nearest") * scale
+    vx_full = ndimage.map_coordinates(vx, [GY, GX], order=1, mode="nearest") * scale
+    return vy_full, vx_full
 
 
 def advect(field, vy, vx, minutes):
