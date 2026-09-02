@@ -11,8 +11,23 @@ Run with: python -m unittest discover tools/hrrr-radar
 """
 import unittest
 
-import observed
-import render
+# Deliberately not `observed` or `render`: those import a GRIB reader, and a
+# geometry test that only runs where numpy and eccodes are installed is a test
+# nobody runs before moving a cell origin. `cells.py` holds both layouts for
+# exactly this reason.
+import cells as layout
+
+
+def measured_cells():
+    w, h = layout.CELL_SPAN
+    return [(n, (west, south, west + w, south + h))
+            for n, west, south in layout.CELL_ORIGINS]
+
+
+def forecast_cells():
+    w, h = layout.FORECAST_CELL_SPAN
+    return [(n, (west, south, west + w, south + h))
+            for n, west, south in layout.FORECAST_CELL_ORIGINS]
 
 # Coastal water, the Great Lakes, and the inland reservoirs the app supports
 # since lakes were brought into scope. Not a sample: these are the spots the
@@ -57,7 +72,31 @@ LAKES = [
     ("Lake Mead", 36.10, -114.40), ("Lake Powell", 37.00, -111.20),
     ("Lake Havasu", 34.50, -114.30), ("Lake Tahoe", 39.10, -120.00),
     ("Flathead Lake", 47.90, -114.10), ("Great Salt Lake", 41.10, -112.50),
+    ("Lake Cumberland", 36.90, -85.00), ("Lake Champlain", 44.50, -73.30),
+    ("Winnipesaukee", 43.60, -71.40), ("Mille Lacs", 46.20, -93.60),
+    ("Leech Lake", 47.15, -94.40), ("Lake Sakakawea", 47.50, -102.30),
+    ("Lake Oahe", 45.00, -100.40), ("Lake Pend Oreille", 48.10, -116.40),
+    ("Lake Roosevelt", 48.00, -118.50), ("Lake Shasta", 40.70, -122.30),
+    ("Toledo Bend", 31.50, -93.60), ("Lake Conroe", 30.40, -95.60),
 ]
+
+# Offshore Gulf. Added 2026-09-01 with the deep-water cells: the coastal strip
+# ran out a little way out to sea, and on the wind layer that edge is a hard
+# wall with blank map beyond it rather than the invisible seam it is on radar.
+OFFSHORE = [
+    ("Gulf central", 26.00, -90.00), ("Gulf deep south", 24.00, -90.00),
+    ("Gulf east deep", 25.00, -85.50), ("Gulf west deep", 25.00, -94.00),
+    ("Gulf southwest", 23.50, -95.00), ("Gulf mid-east", 26.50, -86.00),
+    ("Loop Current", 25.00, -88.00), ("Flower Garden Banks", 27.90, -93.60),
+]
+
+# How far inside a cell a spot must sit.
+#
+# Being inside one is not enough: a boater on the edge of a cell gets a frame
+# that clips their own view, which is the failure the Great Lakes layout hit at
+# Toledo and Duluth. The map opens about 0.9 degrees wide, so this keeps a spot
+# holding most of its view from a single cell.
+EDGE_MARGIN = 0.4
 
 
 def covering(cells, lat, lon):
@@ -68,15 +107,15 @@ def covering(cells, lat, lon):
 class ForecastCells(unittest.TestCase):
 
     def test_cells_cover_the_water_the_app_serves(self):
-        cells = render.cells()
-        for name, lat, lon in SPOTS + LAKES:
+        cells = forecast_cells()
+        for name, lat, lon in SPOTS + LAKES + OFFSHORE:
             self.assertTrue(covering(cells, lat, lon),
                             f"{name} falls between the forecast cells")
 
     def test_a_spot_outside_conus_has_no_cell(self):
         """HRRR does not cover Hawaii, and the app says so differently from
         'no frame'. A cell reaching out there would make that a lie."""
-        cells = render.cells()
+        cells = forecast_cells()
         self.assertFalse(covering(cells, 21.30, -157.85), "Honolulu")
         self.assertFalse(covering(cells, 61.20, -149.90), "Anchorage")
 
@@ -84,24 +123,49 @@ class ForecastCells(unittest.TestCase):
         """HRRR is a 3 km grid — roughly 37 px per degree. Past about 200
         px/degree the extra pixels carry no extra information and cost bytes
         on a boater's connection."""
-        px_per_degree = render.FORECAST_CELL_SIZE[1] / render.FORECAST_CELL_SPAN[1]
+        px_per_degree = layout.FORECAST_CELL_SIZE[1] / layout.FORECAST_CELL_SPAN[1]
         self.assertLessEqual(px_per_degree, 220)
         self.assertGreaterEqual(px_per_degree, 100, "too coarse to smooth cleanly")
 
 
 class MeasuredCells(unittest.TestCase):
 
-    def test_cells_cover_the_coast_and_the_great_lakes(self):
-        cells = observed.cells()
-        for name, lat, lon in SPOTS:
+    def test_cells_cover_the_coast_the_great_lakes_and_inland(self):
+        """Inland used to be exempt here, and that exemption ended on
+        2026-09-01.
+
+        The measured layout is also the wind layout, so a lake with no cell had
+        a forecast picture, no wind field and no measured radar — and on the
+        wind layer a missing cell is not a quiet fallback but a hard-edged hole
+        in the map, which reads as calm rather than as absent.
+        """
+        cells = measured_cells()
+        for name, lat, lon in SPOTS + LAKES + OFFSHORE:
             self.assertTrue(covering(cells, lat, lon),
                             f"{name} falls between the measured cells")
+
+    def test_no_spot_sits_on_a_cell_edge(self):
+        """Inside a cell is not the same as held by one.
+
+        A spot on the boundary gets a frame that clips its own view — the
+        Toledo and Duluth failure, which the layout fixed by moving origins
+        rather than by widening cells.
+        """
+        cells = measured_cells()
+        for name, lat, lon in SPOTS + LAKES + OFFSHORE:
+            margins = [min(lon - w, e - lon, lat - s, n - lat)
+                       for _, (w, s, e, n) in cells
+                       if w <= lon <= e and s <= lat <= n]
+            self.assertTrue(margins, f"{name} has no cell at all")
+            self.assertGreaterEqual(
+                max(margins), EDGE_MARGIN,
+                f"{name} sits {max(margins):.2f} deg inside its best cell")
 
     def test_cells_are_finer_than_the_forecast_ones(self):
         """MRMS is a 1 km mosaic against HRRR's 3 km model, so the measured
         half earns the extra pixels and the forecast half does not."""
-        measured = observed.CELL_SIZE[1] / observed.CELL_SPAN[1]
-        forecast = render.FORECAST_CELL_SIZE[1] / render.FORECAST_CELL_SPAN[1]
+        measured = layout.CELL_SIZE[1] / layout.CELL_SPAN[1]
+        forecast = layout.FORECAST_CELL_SIZE[1] / layout.FORECAST_CELL_SPAN[1]
         self.assertGreater(measured, forecast * 2)
 
 

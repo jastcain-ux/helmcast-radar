@@ -1,8 +1,13 @@
-"""Where the measured-radar cells are.
+"""Where the cells are — both layouts.
 
 Lifted out of `observed.py` so the lightning renderer can import the layout
 without importing a GRIB reader with it. One definition, so a cell can never
 exist for radar and not for lightning — `test_cells.py` guards it for gaps.
+
+The forecast layout moved here on 2026-09-01 for the same reason, and because
+it was keeping `test_cells.py` from running anywhere numpy is not installed:
+a geometry test that cannot run on a laptop is a geometry test nobody runs
+before pushing a cell origin.
 """
 
 CELL_SIZE = (2400, 1920)
@@ -38,4 +43,72 @@ CELL_ORIGINS = [
     ("lake-superior-w", -93.0, 45.0), ("lake-superior-e", -88.0, 45.5),
     ("lake-huron",      -85.0, 43.0), ("lake-erie",       -84.0, 41.0),
     ("lake-ontario",    -79.0, 42.5),
+
+    # The deep Gulf. Added 2026-09-01: the coastal strip stopped a little way
+    # offshore, and the wind layer is what made that visible — radar paints
+    # only where there is rain, so its cell edges fall on empty map, while a
+    # field paints everywhere and its edge becomes the picture.
+    ("gulf-west",       -98.0, 22.0), ("gulf-central",    -92.5, 23.0),
+    ("gulf-east",       -89.0, 23.0),
+
+    # Inland reservoirs. The forecast layout has reached these since lakes came
+    # into scope; the measured one did not, so a boater on Lake Texoma had a
+    # forecast picture and no wind field and no measured radar. Placed so every
+    # lake sits at least 0.4 degrees inside a cell — a spot on a cell edge gets
+    # a frame that clips its own view, which is the failure the Great Lakes
+    # layout already hit at Toledo and Duluth.
+    ("texas-north",     -99.5, 32.0), ("ozarks",          -96.5, 35.5),
+    ("tennessee-valley",-91.0, 35.0), ("southeast-lakes", -85.5, 33.5),
+    ("champlain",       -75.0, 42.0), ("minnesota",       -97.0, 44.5),
+    ("dakotas",        -104.5, 44.0), ("desert-southwest",-115.5, 33.5),
+    ("great-salt",     -115.5, 39.0), ("sierra",          -123.0, 37.0),
+    ("inland-northwest",-120.0, 46.0), ("montana-west",   -117.0, 46.0),
+
+    # Green Bay sat 0.10 degrees inside the Lake Michigan cell, so a boater
+    # there got a frame clipped at its own northern edge. Caught by the
+    # edge-margin test added with the inland cells, not by anything on screen —
+    # the same silent shape as the Toledo and Duluth gaps.
+    ("green-bay",       -89.0, 43.0),
+]
+
+
+# --- Forecast layout ---------------------------------------------------
+#
+FORECAST_CELL_SPAN = (10.0, 7.0)
+FORECAST_CELL_SIZE = (2000, 1400)
+FORECAST_CELL_ORIGINS = [
+    # Atlantic
+    ("northeast",       -78.0, 38.0),
+    ("downeast",        -72.0, 42.0),
+    ("mid-atlantic",    -84.0, 32.0),
+    ("southeast",       -85.0, 26.0),
+    ("florida",         -86.0, 23.0),
+    # Gulf
+    ("gulf-east",       -92.0, 26.0),
+    ("gulf-west",      -100.0, 24.0),
+    # Great Lakes
+    ("great-lakes",     -93.0, 40.0),
+    ("lake-superior",   -93.0, 44.0),
+    ("lake-erie-ontario", -83.0, 41.0),
+    # Pacific
+    ("socal",          -124.0, 30.0),
+    ("norcal",         -128.0, 36.0),
+    ("northwest",      -128.0, 42.0),
+    # Inland. SeaWise supports lakes and reservoirs, and a boater on Lake
+    # Texoma or Lake Mead is as entitled to a forecast picture as one on the
+    # Gulf. Without these the forecast half falls back to the wind field —
+    # a flat blue wash that has twice been mistaken for the radar being
+    # broken. `test_cells_cover_the_water_the_app_serves` is the guard.
+    ("texas-inland",   -100.0, 29.0),
+    ("mid-south",       -94.0, 33.0),
+    ("southwest",      -118.0, 34.0),
+    ("northern-rockies", -118.0, 41.0),
+    # Added 2026-09-01 with the deep-Gulf and inland cells on the measured
+    # side. These were real holes rather than tight fits: the upper-midwest
+    # lakes, the Dakota reservoirs, the Idaho and Washington lakes, and the
+    # offshore Gulf all fell outside every forecast cell.
+    ("gulf-deep",       -97.0, 21.0),
+    ("upper-midwest",   -99.0, 43.0),
+    ("northern-plains",-107.0, 42.0),
+    ("inland-northwest",-121.0, 43.0),
 ]

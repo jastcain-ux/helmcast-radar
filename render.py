@@ -38,6 +38,9 @@ from scipy import ndimage
 from PIL import Image
 from pyproj import CRS, Transformer
 
+from cells import (FORECAST_CELL_ORIGINS, FORECAST_CELL_SPAN,
+                   FORECAST_CELL_SIZE)
+
 NOMADS = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/hrrr/prod"
 MERCATOR_R = 20037508.342789244
 
@@ -83,37 +86,7 @@ CONUS_BBOX = (-127.0, 21.0, -65.0, 50.0)
 # Fewer, bigger cells also keep the run affordable: every lead time is rendered
 # into every cell, so 36 steps against the measured half's 25 cells would be
 # 900 frames an hour.
-FORECAST_CELL_SPAN = (10.0, 7.0)
-FORECAST_CELL_SIZE = (2000, 1400)
-FORECAST_CELL_ORIGINS = [
-    # Atlantic
-    ("northeast",       -78.0, 38.0),
-    ("downeast",        -72.0, 42.0),
-    ("mid-atlantic",    -84.0, 32.0),
-    ("southeast",       -85.0, 26.0),
-    ("florida",         -86.0, 23.0),
-    # Gulf
-    ("gulf-east",       -92.0, 26.0),
-    ("gulf-west",      -100.0, 24.0),
-    # Great Lakes
-    ("great-lakes",     -93.0, 40.0),
-    ("lake-superior",   -93.0, 44.0),
-    ("lake-erie-ontario", -83.0, 41.0),
-    # Pacific
-    ("socal",          -124.0, 30.0),
-    ("norcal",         -128.0, 36.0),
-    ("northwest",      -128.0, 42.0),
-    # Inland. SeaWise supports lakes and reservoirs, and a boater on Lake
-    # Texoma or Lake Mead is as entitled to a forecast picture as one on the
-    # Gulf. Without these the forecast half falls back to the wind field —
-    # a flat blue wash that has twice been mistaken for the radar being
-    # broken. `test_cells_cover_the_water_the_app_serves` is the guard.
-    ("texas-inland",   -100.0, 29.0),
-    ("mid-south",       -94.0, 33.0),
-    ("southwest",      -118.0, 34.0),
-    ("northern-rockies", -118.0, 41.0),
-]
-
+# The forecast layout lives in `cells.py` beside the measured one.
 # Written as a 256-colour PNG, for the same reason the measured frames are: a
 # third of the bytes, and indistinguishable side by side because the picture
 # only ever contains ramp colours at a fixed set of alphas.
