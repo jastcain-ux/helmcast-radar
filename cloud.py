@@ -20,6 +20,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cells import NATIONAL_BBOX, NATIONAL_ID, NATIONAL_SIZE  # noqa: E402
 import render                                        # noqa: E402
 import wind                                          # noqa: E402
 
@@ -76,12 +77,23 @@ def main():
         total_in += n
         when = render.valid_time(meta)
 
-        for name, bbox in render.cells():
+        # The regional cells, plus one whole-domain frame.
+        #
+        # Cloud drew a single cell chosen by the boater's own spot, so any view
+        # wider than that cell ended at a dead straight line with clear sky
+        # beyond it — found on Jason's phone 2026-09-02. It is a field, like
+        # wind: it paints everywhere inside its cell, so the cell's edge *is*
+        # the picture.
+        boxes = list(render.cells()) + [(NATIONAL_ID, NATIONAL_BBOX)]
+
+        for name, bbox in boxes:
             # Half the radar's resolution. Cloud is a far smoother field than
             # reflectivity — there is no storm edge to keep sharp — so the
             # extra pixels carried no information and quadrupled the bytes.
-            size = (render.FORECAST_CELL_SIZE[0] // 2,
-                    render.FORECAST_CELL_SIZE[1] // 2)
+            size = ((NATIONAL_SIZE[0] // 2, NATIONAL_SIZE[1] // 2)
+                    if name == NATIONAL_ID
+                    else (render.FORECAST_CELL_SIZE[0] // 2,
+                          render.FORECAST_CELL_SIZE[1] // 2))
             image = render.render(values, meta, bbox, size, paint=colourise)
             filename = f"{name}-cloud-{minutes:04d}.png"
             path = os.path.join(args.out, filename)
