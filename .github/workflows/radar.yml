@@ -55,7 +55,17 @@ permissions:
 jobs:
   render:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Generous, because the cost is lopsided: a normal tick is a couple of
+    # measured frames and finishes in a few minutes, but the first run after a
+    # cell-list change renders every new cell across the whole window, both
+    # national frames, and wind and cloud on top. A timeout there publishes
+    # *nothing* — the manifest is written at the end — so the run that matters
+    # most is the one most likely to be killed.
+    #
+    # Overlapping ticks are already harmless: the concurrency group serialises
+    # them, and a pending run cancelled by a newer one costs nothing because
+    # the work is idempotent.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
 
