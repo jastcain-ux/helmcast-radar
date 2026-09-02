@@ -92,6 +92,17 @@ CONUS_BBOX = (-127.0, 21.0, -65.0, 50.0)
 # third of the bytes, and indistinguishable side by side because the picture
 # only ever contains ramp colours at a fixed set of alphas.
 PALETTE_COLOURS = 256
+# Median-cut with Floyd-Steinberg dithering, not the fast octree.
+#
+# The octree threw the ramp away. After RAMP_STEPS went from 24 to 96 a
+# published forecast frame used 57 palette entries of the 256 available, and
+# the Livingston crop went from 18 distinct colours to 22 — the smoothing the
+# ramp bought was collapsed straight back out at the palette. Octree merges
+# aggressively and badly on slow gradients, which is what a radar fade is.
+# Median-cut spends the 256 entries where the pixels actually are, and dither
+# turns the remaining steps into noise the eye reads as gradient rather than
+# bands. Same 8-bit palette, same bytes; the picture is the product.
+QUANTISER = "mediancut-fs"
 
 
 # Set before the pool forks, read inside the workers. See `observed.py`.
@@ -103,7 +114,8 @@ def _render_one(cell):
     name, bbox, size = cell
     try:
         image = render(_VALUES, _META, bbox, size)
-        image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE) \
+        image.quantize(colors=PALETTE_COLOURS, method=Image.MEDIANCUT,
+                       dither=Image.Dither.FLOYDSTEINBERG) \
              .save(os.path.join(_OUT, f"{name}-refc-{_MINUTES:04d}.png"), optimize=True)
         return name, True, None
     except Exception as e:            # noqa: BLE001 - reported, never substituted
@@ -461,6 +473,7 @@ def main():
         # the run happened to age out, and every frame meanwhile would be drawn
         # to the old rule while the code said the new one.
         "rampSteps": RAMP_STEPS,
+        "quantiser": QUANTISER,
         "cells": [{"id": name,
                    "bbox": {"west": b[0], "south": b[1], "east": b[2], "north": b[3]}}
                   for name, b, _ in wanted_cells],
