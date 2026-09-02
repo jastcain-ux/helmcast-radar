@@ -101,8 +101,17 @@ def motion_field(prev, curr, minutes_apart):
     # Back to the full grid, in cells per minute.
     scale = POOL / max(minutes_apart, 1.0)
     zoom = (prev.shape[0] / vy.shape[0], prev.shape[1] / vy.shape[1])
-    return (ndimage.zoom(vy, zoom, order=1) * scale,
-            ndimage.zoom(vx, zoom, order=1) * scale)
+    vy_full = ndimage.zoom(vy, zoom, order=1) * scale
+    vx_full = ndimage.zoom(vx, zoom, order=1) * scale
+    # `zoom` rounds its output size; the advection indexes this against the
+    # full grid and a one-row mismatch would raise on the runner where it
+    # cannot be seen. Trim or pad to the grid exactly.
+    def fit(a):
+        out = np.zeros(prev.shape, dtype=a.dtype)
+        h, w = min(a.shape[0], prev.shape[0]), min(a.shape[1], prev.shape[1])
+        out[:h, :w] = a[:h, :w]
+        return out
+    return fit(vy_full), fit(vx_full)
 
 
 def advect(field, vy, vx, minutes):
