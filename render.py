@@ -103,6 +103,8 @@ PALETTE_COLOURS = 256
 # turns the remaining steps into noise the eye reads as gradient rather than
 # bands. Same 8-bit palette, same bytes; the picture is the product.
 QUANTISER = "mediancut-fs"
+# Named so the workflow re-renders when the colour scheme itself changes.
+PALETTE = "twc-1"
 
 
 # Set before the pool forks, read inside the workers. See `observed.py`.
@@ -148,20 +150,28 @@ FRAME_SIZE = (4096, 2304)
 # The floor comes back to 5 for the same reason. It was raised to 15 to hide
 # model speckle, and that was solving the wrong problem — the speckle was
 # posterisation, fixed properly by RAMP_STEPS and EDGE_FADE_STEPS below.
+# The Weather Channel's scheme, on Jason's ruling (D-63), not NOAA's legend.
+#
+# No blue band. The floor is 15 dBZ — real rain, not drizzle — because the
+# cyan-and-blue haze NOAA paints below that read as blur on the phone and hid
+# the shape of the weather. Then green through yellow, orange and red as
+# intensity climbs, saturated, and nothing past deep red: the purples and the
+# cyan at the top of NOAA's scale mark hail cores and never earned their place
+# on a boater's screen. Every value maps to a nearer colour than before; nothing
+# is averaged (D-44's no-blur half stands).
 RAMP = [
-    ( 5, ( 51, 235, 235)), (10, ( 52, 164, 246)), (15, ( 52,  52, 246)),
-    (20, ( 51, 254,  51)), (25, ( 51, 202,  51)), (30, ( 51, 149,  51)),
-    (35, (255, 255,  52)), (40, (232, 194,  52)), (45, (254, 149,  50)),
-    (50, (254,  49,  49)), (55, (221,  49,  49)), (60, (193,  47,  47)),
-    (65, (193,  46,  46)), (70, (158,  99, 203)), (75, (204,  54, 241)),
-    (80, ( 48, 198, 201)),
+    (15, ( 74, 222, 128)), (20, ( 34, 197,  94)), (25, ( 22, 163,  74)),
+    (30, ( 21, 128,  61)), (35, (250, 204,  21)), (40, (245, 158,  11)),
+    (45, (249, 115,  22)), (50, (239,  68,  68)), (55, (220,  38,  38)),
+    (60, (185,  28,  28)), (65, (153,  27,  27)), (70, (127,  29,  29)),
+    (80, (127,  29,  29)),
 ]
-ALPHA = 200
+ALPHA = 230   # near-opaque, the way the reference paints it
 # The outermost returns fade in rather than starting at full opacity, so the
 # edge of a cell is an edge rather than a cliff. Real precipitation does not
 # have a hard boundary and drawing one implies a certainty about where the rain
 # stops that a 3 km model does not have.
-EDGE_FADE_DBZ = 8.0
+EDGE_FADE_DBZ = 3.0   # a firm outer edge, not a haze
 # Steps of edge softness.
 #
 # This was 4, to save bytes, and it was the single worst-looking decision in
@@ -474,6 +484,7 @@ def main():
         # to the old rule while the code said the new one.
         "rampSteps": RAMP_STEPS,
         "quantiser": QUANTISER,
+        "palette": PALETTE,
         "cells": [{"id": name,
                    "bbox": {"west": b[0], "south": b[1], "east": b[2], "north": b[3]}}
                   for name, b, _ in wanted_cells],
