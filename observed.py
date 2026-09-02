@@ -77,6 +77,7 @@ HISTORY_MINUTES = 120
 # difference is 107 KB against 42 — and it is still *lighter* than the 400 KB
 # national frame it replaces, which could not serve this zoom at all.
 from cells import (CELL_ORIGINS, CELL_SIZE, CELL_SPAN,  # noqa: F401
+                   MID_ORIGINS, MID_SIZE, MID_SPAN,
                    NATIONAL_BBOX, NATIONAL_ID, NATIONAL_SIZE)
 
 
@@ -93,8 +94,16 @@ def _render_one(cell):
         # The national frame is the model's own resolution rather than a
         # cell's: at continental zoom the extra pixels carry nothing and cost
         # a boater bytes.
-        image = render(_VALUES, _META, bbox,
-                       NATIONAL_SIZE if name == NATIONAL_ID else _SIZE)
+        # Each tier at its own size: close cells sharp, the middle tier at the
+        # density the forecast half publishes, the national frame at the
+        # model's own resolution.
+        if name == NATIONAL_ID:
+            px = NATIONAL_SIZE
+        elif name.startswith("mid-"):
+            px = MID_SIZE
+        else:
+            px = _SIZE
+        image = render(_VALUES, _META, bbox, px)
         image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE) \
              .save(os.path.join(_OUT, f"{name}-{_STAMP}.png"), optimize=True)
         return name, True, None
@@ -113,6 +122,11 @@ def cells():
     """
     out = [(name, (west, south, west + CELL_SPAN[0], south + CELL_SPAN[1]))
            for name, west, south in CELL_ORIGINS]
+    # The middle tier, prefixed so its ids cannot collide with a close cell's.
+    # A view too wide for a close cell lands here instead of falling all the way
+    # to the national frame, which is blocky over a few hundred miles.
+    out += [(f"mid-{name}", (west, south, west + MID_SPAN[0], south + MID_SPAN[1]))
+            for name, west, south in MID_ORIGINS]
     out.append((NATIONAL_ID, NATIONAL_BBOX))
     return out
 

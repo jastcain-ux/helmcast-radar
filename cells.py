@@ -143,3 +143,32 @@ NATIONAL_SIZE = (2400, 1160)
 # against 1241 x 601, which is a sixteenth of the bytes for a picture that
 # looks the same at that scale.
 NATIONAL_WIND_STEP_DEG = 0.2
+
+
+# --- The middle tier ----------------------------------------------------
+#
+# The same weather at a third size, between the close cells and the national
+# frame.
+#
+# The map draws one image per step and never stitches, so a view too wide for
+# a close cell has to fall to whatever comes next. With only two sizes that was
+# the national frame — 38.7 px/degree, which is right for the country and
+# visibly blocky over a few hundred miles. This fills that band.
+#
+# **The geometry is the forecast layout, reused rather than reinvented.** Those
+# cells are already 10 x 7 degrees and already cover the water this app serves,
+# so a second hand-placed list would be a second thing to keep in step — and
+# the Great Lakes layout has already taught what happens when a cell list drifts
+# from the water it is meant to cover.
+#
+# 200 px/degree, the density the forecast half already publishes at: sharp
+# enough that a regional view does not look upscaled, and no finer than the
+# 3 km model can justify.
+MID_SPAN = FORECAST_CELL_SPAN
+MID_ORIGINS = FORECAST_CELL_ORIGINS
+MID_SIZE = FORECAST_CELL_SIZE
+
+# Wind is a smooth field read for direction at this zoom, not for a number off
+# a pixel, so it is published at half the close cells' resolution — a quarter
+# of the samples for a picture that looks the same across a region.
+MID_WIND_STEP_DEG = 0.1

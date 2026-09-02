@@ -24,7 +24,8 @@ from pyproj import CRS, Transformer
 from scipy.ndimage import map_coordinates
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cells import (CELL_ORIGINS, CELL_SPAN, NATIONAL_BBOX,      # noqa: E402
+from cells import (CELL_ORIGINS, CELL_SPAN, MID_ORIGINS,        # noqa: E402
+                   MID_SPAN, MID_WIND_STEP_DEG, NATIONAL_BBOX,
                    NATIONAL_ID, NATIONAL_WIND_STEP_DEG)
 import render                                       # noqa: E402
 
@@ -158,6 +159,13 @@ def main():
         # phone 2026-09-01.
         boxes = [(n, w, s2, w + CELL_SPAN[0], s2 + CELL_SPAN[1], None)
                  for n, w, s2 in CELL_ORIGINS]
+        # The middle tier: a view too wide for a close cell lands here rather
+        # than falling to the national frame. Half the close cells' resolution,
+        # because at that zoom the field is read for where the air is going
+        # rather than for a number off a pixel.
+        boxes += [(f"mid-{n}", w, s2, w + MID_SPAN[0], s2 + MID_SPAN[1],
+                   MID_WIND_STEP_DEG)
+                  for n, w, s2 in MID_ORIGINS]
         boxes.append((NATIONAL_ID, NATIONAL_BBOX[0], NATIONAL_BBOX[1],
                       NATIONAL_BBOX[2], NATIONAL_BBOX[3], NATIONAL_WIND_STEP_DEG))
 
