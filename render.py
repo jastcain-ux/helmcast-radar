@@ -305,7 +305,7 @@ def colourise(dbz):
     return out
 
 
-def render(values, meta, bbox, size):
+def render(values, meta, bbox, size, paint=None):
     """Cubic-spline sample from the model's Lambert grid into web mercator.
 
     This started as nearest-neighbour, on the theory that interpolating
@@ -359,7 +359,10 @@ def render(values, meta, bbox, size):
     interpolated = ndimage.map_coordinates(values, [fy, fx], order=3,
                                            mode="nearest", prefilter=True)
     sampled = np.where(inside, interpolated, -99.0)
-    return Image.fromarray(colourise(sampled))
+    # `paint` so the cloud renderer can reuse this reprojection rather than
+    # keeping a second copy of it. One implementation of the Lambert-to-mercator
+    # sampling, which is the part that is easy to get subtly wrong.
+    return Image.fromarray((paint or colourise)(sampled))
 
 
 def valid_time(meta):

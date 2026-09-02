@@ -44,10 +44,6 @@ on:
 
 # One at a time. Two overlapping runs would race to commit the same frames.
 concurrency:
-  # Still spelled helmcast, and deliberately. The cache key is what carries
-  # `public/` between runs, and changing it orphans every published frame and
-  # forces a full re-render — a visible gap in the timeline for the sake of a
-  # label nobody sees. The repo is seawise-radar; this string is just a key.
   group: helmcast-radar
   cancel-in-progress: false
 
@@ -104,6 +100,7 @@ jobs:
       # not fire on the first run, when there is no manifest, so it would have
       # started breaking later and looked like something else.
       - name: Render forecast frames if the run has moved on
+        id: forecast
         run: |
           if python - <<'EOF'
           import datetime, json, os, sys
@@ -116,9 +113,33 @@ jobs:
           EOF
           then
             python render.py --out public
+            # Announced rather than inferred. The step succeeds either way —
+            # it is an if/then/else in shell — so `outcome == success` is true
+            # even when nothing was rendered, and gating wind on that would
+            # have pulled 35 MB every ten minutes to republish identical files.
+            echo "rendered=true" >> "$GITHUB_OUTPUT"
           else
             echo "forecast manifest is current; skipping"
+            echo "rendered=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # Wind vectors, only when the forecast frames were re-rendered — both
+      # come from the same HRRR run, so re-pulling wind on a tick that skipped
+      # the forecast would download 35 MB to republish identical files.
+      #
+      # continue-on-error for the same reason as lightning: wind is one layer,
+      # the radar frames are the screen.
+      - name: Render wind vectors with the forecast
+        if: steps.forecast.outputs.rendered == 'true'
+        continue-on-error: true
+        run: python wind.py --out public/wind
+
+      # Cloud cover, on the same gate and for the same reason as wind: it
+      # comes from the run the forecast frames came from.
+      - name: Render cloud cover with the forecast
+        if: steps.forecast.outputs.rendered == 'true'
+        continue-on-error: true
+        run: python cloud.py --out public/cloud
 
       # Observed lightning, every run. NOAA's GLM buckets publish a file every
       # 20 seconds, and the script carries forward what it published last time
