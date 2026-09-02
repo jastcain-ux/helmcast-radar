@@ -109,6 +109,14 @@ jobs:
       # *successful* freshness check would have failed the whole job. It could
       # not fire on the first run, when there is no manifest, so it would have
       # started breaking later and looked like something else.
+      # Extrapolated measured radar for the next two hours (D-64). Cheap:
+      # two MRMS reads and array shifts, no GRIB from NOMADS, and it renders
+      # only when the newest measured frame has changed. A layer, not the
+      # screen, so it must not take the run down.
+      - name: Render the nowcast from the last two measured frames
+        continue-on-error: true
+        run: python nowcast.py --out public/nowcast
+
       - name: Render forecast frames if the run has moved on
         id: forecast
         run: |
@@ -201,6 +209,7 @@ jobs:
       - name: Prune frames the timeline can no longer reach
         run: |
           python prune.py --dir public/observed
+          python prune.py --dir public/nowcast
           python prune.py --dir public
 
       - name: Carry the frames to the next run
