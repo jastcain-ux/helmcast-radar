@@ -37,7 +37,7 @@ Honesty rules carried over unchanged
 - Each frame carries the time it was *observed*, not when it was fetched.
 - Below 5 dBZ is transparent, the same floor the forecast frames use.
 """
-import argparse, datetime, gzip, io, json, math, os, re, sys, urllib.request
+import argparse, multiprocessing, datetime, gzip, io, json, math, os, re, sys, urllib.request
 
 import numpy as np
 import eccodes
@@ -78,6 +78,28 @@ HISTORY_MINUTES = 120
 # national frame it replaces, which could not serve this zoom at all.
 from cells import (CELL_ORIGINS, CELL_SIZE, CELL_SPAN,  # noqa: F401
                    NATIONAL_BBOX, NATIONAL_ID, NATIONAL_SIZE)
+
+
+# Set before the pool forks, read inside the workers. Module-level because a
+# forked child inherits them for free; passing the decoded grid as an argument
+# would pickle tens of megabytes per cell.
+_VALUES = _META = _SIZE = _OUT = _STAMP = None
+
+
+def _render_one(cell):
+    """Render one cell of the frame the pool was forked for."""
+    name, bbox = cell
+    try:
+        # The national frame is the model's own resolution rather than a
+        # cell's: at continental zoom the extra pixels carry nothing and cost
+        # a boater bytes.
+        image = render(_VALUES, _META, bbox,
+                       NATIONAL_SIZE if name == NATIONAL_ID else _SIZE)
+        image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE) \
+             .save(os.path.join(_OUT, f"{name}-{_STAMP}.png"), optimize=True)
+        return name, True, None
+    except Exception as e:            # noqa: BLE001 - reported, never substituted
+        return name, False, str(e)
 
 
 def cells():
@@ -273,27 +295,43 @@ def main():
                 print(f"  {when:%H:%M}Z  SKIPPED: {e}", file=sys.stderr)
                 continue
 
+        # Cells are rendered in parallel across the runner's cores.
+        #
+        # Measured 2026-09-02 on a real run: this step took **689 seconds**,
+        # eleven and a half minutes, and it is the reason the app kept showing
+        # "NOAA's live radar isn't responding". The frames were correct; they
+        # were simply older than the 30-minute staleness limit by the time the
+        # run finished, so the app refused to draw them — which is the right
+        # behaviour and must not be loosened.
+        #
+        # The work is 43 independent reprojections of one grid onto one cell
+        # each, run one after another on a four-core machine. Nothing about it
+        # was serial except the loop.
+        #
+        # `fork` is the default on Linux, so each worker inherits the decoded
+        # grid rather than having it pickled across — the array is tens of
+        # megabytes and sending it per cell would cost more than the drawing.
         for name, bbox in wanted_cells:
             image_name = f"{name}-{stamp}.png"
-            path = os.path.join(args.out, image_name)
-            if os.path.exists(path):
+            if os.path.exists(os.path.join(args.out, image_name)):
                 frames.append({"observedTime": when.isoformat().replace("+00:00", "Z"),
                                "cell": name, "image": image_name})
                 reused += 1
-                continue
-            try:
-                # The national frame is the model's own resolution rather
-                # than a cell's: at continental zoom the extra pixels carry
-                # nothing and cost a boater bytes.
-                image = render(values, meta, bbox,
-                               NATIONAL_SIZE if name == NATIONAL_ID else size)
-                image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE) \
-                     .save(path, optimize=True)
-                frames.append({"observedTime": when.isoformat().replace("+00:00", "Z"),
-                               "cell": name, "image": image_name})
-                rendered += 1
-            except Exception as e:
-                print(f"  {when:%H:%M}Z {name}: SKIPPED: {e}", file=sys.stderr)
+
+        missing = [(n, b) for n, b in wanted_cells
+                   if not os.path.exists(os.path.join(args.out, f"{n}-{stamp}.png"))]
+        if missing:
+            global _VALUES, _META, _SIZE, _OUT, _STAMP
+            _VALUES, _META, _SIZE, _OUT, _STAMP = values, meta, size, args.out, stamp
+            with multiprocessing.Pool(processes=min(len(missing), os.cpu_count() or 2)) as pool:
+                for name, ok, err in pool.imap_unordered(_render_one, missing):
+                    if ok:
+                        frames.append({"observedTime": when.isoformat().replace("+00:00", "Z"),
+                                       "cell": name,
+                                       "image": f"{name}-{stamp}.png"})
+                        rendered += 1
+                    else:
+                        print(f"  {when:%H:%M}Z {name}: SKIPPED: {err}", file=sys.stderr)
 
         if todo:
             kb = sum(os.path.getsize(os.path.join(args.out, f"{n}-{stamp}.png"))

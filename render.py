@@ -30,7 +30,7 @@ Honesty rules that are not optional
   ago is not a six-hour outlook.
 - Below 5 dBZ is transparent. Drizzle nobody can feel must not paint the bay.
 """
-import argparse, datetime, json, math, os, sys, tempfile, urllib.request
+import argparse, datetime, json, math, multiprocessing, os, sys, tempfile, urllib.request
 
 import numpy as np
 import eccodes
@@ -92,6 +92,22 @@ CONUS_BBOX = (-127.0, 21.0, -65.0, 50.0)
 # third of the bytes, and indistinguishable side by side because the picture
 # only ever contains ramp colours at a fixed set of alphas.
 PALETTE_COLOURS = 256
+
+
+# Set before the pool forks, read inside the workers. See `observed.py`.
+_VALUES = _META = _OUT = _MINUTES = None
+
+
+def _render_one(cell):
+    """Render one cell of the lead time the pool was forked for."""
+    name, bbox, size = cell
+    try:
+        image = render(_VALUES, _META, bbox, size)
+        image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE) \
+             .save(os.path.join(_OUT, f"{name}-refc-{_MINUTES:04d}.png"), optimize=True)
+        return name, True, None
+    except Exception as e:            # noqa: BLE001 - reported, never substituted
+        return name, False, str(e)
 
 
 def cells():
@@ -386,21 +402,26 @@ def main():
         # the file is right and the arithmetic is wrong.
         when = valid_time(meta)
         written = 0
-        for name, bbox, size in wanted_cells:
-            try:
-                image = render(values, meta, bbox, size)
-                image_name = f"{name}-refc-{minutes:04d}.png"
-                image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE) \
-                     .save(os.path.join(args.out, image_name), optimize=True)
-                frames.append({
-                    "leadMinutes": minutes,
-                    "cell": name,
-                    "validTime": when.isoformat().replace("+00:00", "Z") if when else None,
-                    "image": image_name,
-                })
-                written += 1
-            except Exception as e:
-                print(f"  +{minutes:3d} min {name}: SKIPPED: {e}", file=sys.stderr)
+        # In parallel across the runner's cores, for the same reason the
+        # measured half is: 22 independent reprojections of one grid, run one
+        # after another, took eleven minutes of a run whose output ages while
+        # it works. `fork` lets each worker inherit the decoded grid rather
+        # than having it pickled per cell.
+        global _VALUES, _META, _OUT, _MINUTES
+        _VALUES, _META, _OUT, _MINUTES = values, meta, args.out, minutes
+        with multiprocessing.Pool(processes=min(len(wanted_cells),
+                                                os.cpu_count() or 2)) as pool:
+            for name, ok, err in pool.imap_unordered(_render_one, wanted_cells):
+                if ok:
+                    frames.append({
+                        "leadMinutes": minutes,
+                        "cell": name,
+                        "validTime": when.isoformat().replace("+00:00", "Z") if when else None,
+                        "image": f"{name}-refc-{minutes:04d}.png",
+                    })
+                    written += 1
+                else:
+                    print(f"  +{minutes:3d} min {name}: SKIPPED: {err}", file=sys.stderr)
 
         kb = sum(os.path.getsize(os.path.join(args.out, f"{n}-refc-{minutes:04d}.png"))
                  for n, _, _ in wanted_cells
