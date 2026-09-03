@@ -2,6 +2,7 @@
 import unittest
 import numpy as np
 from smoothing import smooth, shape, restore_peaks, sigma_px, OUTSIDE
+from scipy import ndimage
 
 BBOX = (-100.0, 25.0, -90.0, 32.0)
 SIZE = (2000, 1400)          # 200 px per degree, the forecast close tier
@@ -51,6 +52,30 @@ class SmoothingTests(unittest.TestCase):
         self.assertLess(lost, 66.0, "a plain 0.7-cell smooth takes several dBZ off one cell")
         self.assertGreaterEqual(after, before - 0.3, "with the peaks restored the core keeps its colour")
         self.assertLessEqual(out.max(), before + 0.5, "and nothing is invented above it")
+
+    def test_restoring_peaks_adds_no_plateaus(self):
+        # A textured field: the restoration must not paint flat squares. Count
+        # 3x3 neighbourhoods of the added bump that are exactly flat but non-zero
+        # — a maximum filter makes thousands; point bumps make none.
+        rng = np.random.default_rng(5)
+        f = ndimage.gaussian_filter(rng.uniform(10, 60, (120, 120)), 1.5)
+        sm = ndimage.gaussian_filter(f, sigma_px(HRRR, BBOX, SIZE, 0.7), mode="nearest")
+        bump = restore_peaks(f, sm, HRRR * 200) - sm
+        flat = 0
+        for y in range(1, 119):
+            for x in range(1, 119):
+                w = bump[y-1:y+2, x-1:x+2]
+                if w.max() > 0.05 and (w.max() - w.min()) < 1e-9:
+                    flat += 1
+        self.assertEqual(flat, 0)
+
+    def test_restoring_peaks_invents_nothing_above_the_field(self):
+        rng = np.random.default_rng(7)
+        f = ndimage.gaussian_filter(rng.uniform(10, 65, (120, 120)), 1.0)
+        sm = ndimage.gaussian_filter(f, sigma_px(HRRR, BBOX, SIZE, 0.7), mode="nearest")
+        out = restore_peaks(f, sm, HRRR * 200)
+        self.assertTrue(np.all(out <= np.maximum(f, sm) + 1e-9), "a restored pixel never exceeds the field")
+        self.assertTrue(np.all(out >= sm - 1e-9), "and never falls below the smooth")
 
     def test_restoring_peaks_never_lowers_a_pixel(self):
         rng = np.random.default_rng(3)

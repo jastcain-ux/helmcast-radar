@@ -55,18 +55,39 @@ def smooth(sampled, cell_deg, bbox, size, cells):
     return np.where(inside, field, OUTSIDE), before, after
 
 
-def restore_peaks(original, smoothed, cell_px):
-    """Add back what the smooth took off the tops.
+def restore_peaks(original, smoothed, cell_px, floor=40.0):
+    """Give every storm core its top back, as a smooth bump.
 
-    The local maximum of the smoothed field sits below the original's near
-    every core; that difference, spread over half a cell so it does not draw
-    a dot, is added around each peak. Values only go up, never down, so no
-    core is painted weaker than the field said.
+    For each connected region at or above `floor` dBZ (yellow and up — the
+    colours that decide "heavy rain" from "storm"), find the original's highest
+    pixel and add a Gaussian bump there, one cell wide, whose height is exactly
+    what the smooth took off that pixel. The core's top is back to the value
+    the field said; the bump fades out over a cell; nothing else moves.
+
+    The first version used a maximum filter over two cells. That restored the
+    tops too, but a maximum filter is a field of flat plateaus, and under flat
+    colour bands every plateau edge drew as a square. Jason saw 8 km squares
+    over east Texas on 2026-09-02. Point bumps have no edges.
     """
-    k = max(int(round(2 * cell_px)) | 1, 3)
-    gain = np.clip(ndimage.maximum_filter(original, k) - ndimage.maximum_filter(smoothed, k),
-                   0.0, None)
-    return smoothed + ndimage.gaussian_filter(gain, max(cell_px * 0.5, 0.5), mode="nearest")
+    cores, count = ndimage.label(original >= floor)
+    if count == 0:
+        return smoothed
+    tops = ndimage.maximum_position(original, cores, index=list(range(1, count + 1)))
+    ys = np.array([t[0] for t in tops], dtype=int)
+    xs = np.array([t[1] for t in tops], dtype=int)
+    amplitude = np.clip(original[ys, xs] - smoothed[ys, xs], 0.0, None)
+    points = np.zeros_like(original, dtype=float)
+    np.maximum.at(points, (ys, xs), amplitude)
+    sigma = max(cell_px, 1.0)
+    # A unit impulse through the filter has centre value 1/(2*pi*sigma^2);
+    # scaling by that makes the bump's height at the core's top the amplitude.
+    bump = ndimage.gaussian_filter(points, sigma, mode="constant") * (2 * np.pi * sigma ** 2)
+    # Never above the field itself: the bump is clamped to what the original
+    # exceeds the smooth by, so every restored pixel lies between the smooth
+    # and the original. Without this the bell painted up to 5 dBZ beside a
+    # core that the field never had there.
+    bump = np.minimum(bump, np.clip(original - smoothed, 0.0, None))
+    return smoothed + bump
 
 
 def shape(sampled, cell_deg, bbox, size, cells):
