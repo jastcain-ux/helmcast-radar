@@ -48,6 +48,7 @@ from PIL import Image
 from render import (ALPHA, CONUS_BBOX, MERCATOR_R, PALETTE, QUANTISER, RAMP,
                     RAMP_STEPS, colourise)
 from smoothing import shape
+from steps import select
 
 BUCKET = "https://noaa-mrms-pds.s3.amazonaws.com"
 PRODUCT = "MergedReflectivityQCComposite_00.50"
@@ -176,10 +177,11 @@ def observed_time(key):
 def wanted_keys(now=None):
     """One key per timeline step, newest last.
 
-    Frames arrive about every two minutes, so each step takes the closest
-    frame at or before it. A step with nothing within half a step is left out
-    rather than filled from further away — a gap the app can state is better
-    than a frame under the wrong label.
+    Frames arrive about every two minutes; each ten-minute clock boundary takes
+    the frame nearest it, and the newest frame closes the list. A step with
+    nothing within half a step is left out rather than filled from further
+    away — a gap the app can state is better than a frame under the wrong
+    label.
     """
     now = now or datetime.datetime.now(datetime.timezone.utc)
     keys = []
@@ -190,23 +192,9 @@ def wanted_keys(now=None):
         except Exception as e:
             print(f"  listing {day} failed: {e}", file=sys.stderr)
     stamped = sorted((observed_time(k), k) for k in keys if observed_time(k))
-    if not stamped:
-        return []
-
-    newest = stamped[-1][0]
-    tolerance = datetime.timedelta(minutes=STEP_MINUTES / 2)
-    out, seen = [], set()
-    steps = range(HISTORY_MINUTES, -1, -STEP_MINUTES)
-    for back in steps:
-        target = newest - datetime.timedelta(minutes=back)
-        candidates = [(abs(t - target), t, k) for t, k in stamped if t <= target + tolerance]
-        if not candidates:
-            continue
-        gap, t, k = min(candidates)
-        if gap <= tolerance and k not in seen:
-            seen.add(k)
-            out.append((t, k))
-    return out
+    # On the clock, not on the newest frame — see steps.py for why the stamps
+    # drifted and every run redrew all 832 frames (HelmCast B-20, 2026-09-03).
+    return select(stamped, STEP_MINUTES, HISTORY_MINUTES)
 
 
 def read_frame(key):
