@@ -37,6 +37,7 @@ Honesty rules carried over unchanged
 - Each frame carries the time it was *observed*, not when it was fetched.
 - Below 5 dBZ is transparent, the same floor the forecast frames use.
 """
+import json
 import argparse, multiprocessing, datetime, gzip, io, json, math, os, re, sys, urllib.request
 
 import numpy as np
@@ -44,7 +45,8 @@ import eccodes
 from scipy import ndimage
 from PIL import Image
 
-from render import ALPHA, CONUS_BBOX, MERCATOR_R, colourise, RAMP
+from render import (ALPHA, CONUS_BBOX, MERCATOR_R, PALETTE, QUANTISER, RAMP,
+                    RAMP_STEPS, colourise)
 from smoothing import smooth
 
 BUCKET = "https://noaa-mrms-pds.s3.amazonaws.com"
@@ -300,9 +302,30 @@ def main():
 
     wanted_cells = [c for c in cells() if not args.only or c[0] == args.only]
 
+    # Redraw everything when the drawing rule changed, the way the forecast's
+    # workflow gate does. Without this the loop kept twelve old-style frames
+    # against one new one for three hours after a style change, because the
+    # renderer only draws stamps it has not seen (D-65, 2026-09-02).
+    style = {"alpha": ALPHA, "smoothing": SMOOTH_CELLS, "rampSteps": RAMP_STEPS,
+             "palette": PALETTE, "quantiser": QUANTISER}
+    try:
+        with open(os.path.join(args.out, "manifest.json")) as f:
+            published = json.load(f)
+    except (OSError, ValueError):
+        published = {}
+    restyle = any(published.get(k) != v for k, v in style.items())
+    if restyle:
+        print("drawing rule changed; redrawing every measured frame")
+
     frames, downloaded, reused, rendered = [], 0, 0, 0
     for when, key in steps:
         stamp = when.strftime("%Y%m%dT%H%M") + "Z"
+        if restyle:
+            for name, _ in wanted_cells:
+                try:
+                    os.unlink(os.path.join(args.out, f"{name}-{stamp}.png"))
+                except OSError:
+                    pass
         # Which cells still need this step. One GRIB read serves all of them,
         # so the download only happens if at least one is missing.
         todo = [(name, bbox) for name, bbox in wanted_cells
@@ -374,6 +397,9 @@ def main():
         "dbzFloor": RAMP[0][0],
         "smoothing": SMOOTH_CELLS,
         "alpha": ALPHA,
+        "rampSteps": RAMP_STEPS,
+        "palette": PALETTE,
+        "quantiser": QUANTISER,
         "size": {"width": size[0], "height": size[1]},
         "cells": [{"id": name,
                    "bbox": {"west": b[0], "south": b[1], "east": b[2], "north": b[3]}}
