@@ -55,11 +55,13 @@ def smooth(sampled, cell_deg, bbox, size, cells):
     return np.where(inside, field, OUTSIDE), before, after
 
 
-def restore_peaks(original, smoothed, cell_px, floor=40.0):
+def restore_peaks(original, smoothed, cell_px, floor=35.0):
     """Give every storm core its top back, as a smooth bump.
 
-    For each connected region at or above `floor` dBZ (yellow and up — the
-    colours that decide "heavy rain" from "storm"), find the original's highest
+    For each connected region at or above `floor` dBZ — 35, where the ramp
+    leaves green, so every yellow, orange and red core keeps its colour; the
+    first cut used 40 and let a 38 dBZ cell smooth to 33 and paint green,
+    heavy rain shown as light (review 2026-09-02) — find the original's highest
     pixel and add a Gaussian bump there, one cell wide, whose height is exactly
     what the smooth took off that pixel. The core's top is back to the value
     the field said; the bump fades out over a cell; nothing else moves.

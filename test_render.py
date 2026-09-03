@@ -77,6 +77,15 @@ class SmoothingTests(unittest.TestCase):
         self.assertTrue(np.all(out <= np.maximum(f, sm) + 1e-9), "a restored pixel never exceeds the field")
         self.assertTrue(np.all(out >= sm - 1e-9), "and never falls below the smooth")
 
+    def test_a_small_yellow_core_stays_yellow(self):
+        # 38 dBZ on one model cell over 20: a plain smooth takes it under 35,
+        # the first yellow band, and it paints green. The restore must keep it.
+        f = np.full((60, 60), 20.0); f[27:33, 27:33] = 38.0
+        _, _, plain = smooth(f, HRRR, BBOX, SIZE, 0.7)
+        out, _, after = shape(f, HRRR, BBOX, SIZE, 0.7)
+        self.assertLess(plain, 35.0, "the plain smooth does drop it out of yellow")
+        self.assertGreaterEqual(after, 38.0 - 0.3, "the restore keeps the core in yellow")
+
     def test_restoring_peaks_never_lowers_a_pixel(self):
         rng = np.random.default_rng(3)
         f = rng.uniform(10, 60, (80, 80)); sm = shape(f, HRRR, BBOX, SIZE, 0.7)[0]

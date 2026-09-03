@@ -124,7 +124,7 @@ BANDS = True
 # gates compare it: "-r2" is the point-bump peak restoration that replaced the
 # maximum-filter plateaus (L-69). Bump it whenever the picture's rule changes
 # without a manifest key of its own, or the old frames stay published.
-PALETTE = "twc-2-bands-r2"
+PALETTE = "twc-2-bands-r3"   # r3: peaks restored from 35 dBZ, not 40
 
 
 # Set before the pool forks, read inside the workers. See `observed.py`.
