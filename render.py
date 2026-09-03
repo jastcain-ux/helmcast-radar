@@ -120,7 +120,11 @@ SMOOTH_CELLS = 0.7
 # Jason picked it against the blended version (D-66).
 BANDS = True
 # Named so the workflow re-renders when the colour scheme itself changes.
-PALETTE = "twc-2-bands"
+# The name carries the shaping revision too, because both renderers' redraw
+# gates compare it: "-r2" is the point-bump peak restoration that replaced the
+# maximum-filter plateaus (L-69). Bump it whenever the picture's rule changes
+# without a manifest key of its own, or the old frames stay published.
+PALETTE = "twc-2-bands-r2"
 
 
 # Set before the pool forks, read inside the workers. See `observed.py`.
