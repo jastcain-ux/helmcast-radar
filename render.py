@@ -41,7 +41,7 @@ from pyproj import CRS, Transformer
 from cells import (FORECAST_CELL_ORIGINS, FORECAST_CELL_SPAN,
                    FORECAST_CELL_SIZE, NATIONAL_BBOX, NATIONAL_ID,
                    NATIONAL_SIZE)
-from smoothing import smooth  # noqa: E402
+from smoothing import shape  # noqa: E402
 
 NOMADS = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/hrrr/prod"
 MERCATOR_R = 20037508.342789244
@@ -113,9 +113,14 @@ PALETTE_COLOURS = 256
 QUANTISER = "rgba"
 # Fraction of one model cell to smooth by after the cubic upsample; the table
 # and the reason are in `smoothing.py`.
-SMOOTH_CELLS = 0.3
+SMOOTH_CELLS = 0.7
+# Flat colour bands at the ramp's own stops instead of a continuous blend.
+# On a smoothed field the band edges are clean curves, not the staircase the
+# 24-step ramp drew on a raw one; The Weather Channel's picture is banded and
+# Jason picked it against the blended version (D-66).
+BANDS = True
 # Named so the workflow re-renders when the colour scheme itself changes.
-PALETTE = "twc-1"
+PALETTE = "twc-2-bands"
 
 
 # Set before the pool forks, read inside the workers. See `observed.py`.
@@ -180,7 +185,11 @@ ALPHA = 255   # opaque. Jason, 2026-09-02, against The Weather Channel side by s
 # edge of a cell is an edge rather than a cliff. Real precipitation does not
 # have a hard boundary and drawing one implies a certainty about where the rain
 # stops that a 3 km model does not have.
-EDGE_FADE_DBZ = 3.0   # a firm outer edge, not a haze
+# Half a dBZ: one pixel of anti-aliasing at the floor and then full colour.
+# The Weather Channel's outline is a line, not a haze, and Jason chose it
+# against the 3 dBZ fade side by side (D-66). Where the rain stops is still
+# the 15 dBZ floor; only the drawing of that line changed.
+EDGE_FADE_DBZ = 0.5
 # Steps of edge softness.
 #
 # This was 4, to save bytes, and it was the single worst-looking decision in
@@ -326,14 +335,18 @@ def colourise(dbz):
     colours = np.array([c for _, c in RAMP], dtype=float)
     floor, ceiling = stops[0], stops[-1]
 
-    quantised = np.clip(dbz, floor, ceiling)
-    quantised = floor + np.round(
-        (quantised - floor) / (ceiling - floor) * RAMP_STEPS) / RAMP_STEPS * (ceiling - floor)
-
     h, w = dbz.shape
     out = np.zeros((h, w, 4), dtype=np.uint8)
-    for channel in range(3):
-        out[..., channel] = np.interp(quantised, stops, colours[:, channel]).astype(np.uint8)
+    if BANDS:
+        band = np.clip(np.searchsorted(stops, dbz, side="right") - 1, 0, len(stops) - 1)
+        for channel in range(3):
+            out[..., channel] = colours[band, channel].astype(np.uint8)
+    else:
+        quantised = np.clip(dbz, floor, ceiling)
+        quantised = floor + np.round(
+            (quantised - floor) / (ceiling - floor) * RAMP_STEPS) / RAMP_STEPS * (ceiling - floor)
+        for channel in range(3):
+            out[..., channel] = np.interp(quantised, stops, colours[:, channel]).astype(np.uint8)
     lit = dbz >= floor
     fade = np.clip((dbz - floor) / EDGE_FADE_DBZ, 0.0, 1.0)
     fade = np.ceil(fade * EDGE_FADE_STEPS) / EDGE_FADE_STEPS
@@ -397,8 +410,8 @@ def render(values, meta, bbox, size, paint=None):
     sampled = np.where(inside, interpolated, -99.0)
     if paint is None:
         # Reflectivity only; cloud cover reuses the reprojection untouched.
-        sampled, before, after = smooth(sampled, meta["DxInMetres"] / 111_000.0,
-                                        bbox, size, SMOOTH_CELLS)
+        sampled, before, after = shape(sampled, meta["DxInMetres"] / 111_000.0,
+                                       bbox, size, SMOOTH_CELLS)
         if before - after > 0.3:
             # Louder than a third of a ramp step: say so, with the frame size,
             # so a core understated by smoothing is in the run log, not hidden.
@@ -504,6 +517,7 @@ def main():
         "palette": PALETTE,
         "smoothing": SMOOTH_CELLS,
         "alpha": ALPHA,
+        "bands": BANDS,
         "cells": [{"id": name,
                    "bbox": {"west": b[0], "south": b[1], "east": b[2], "north": b[3]}}
                   for name, b, _ in wanted_cells],

@@ -1,7 +1,7 @@
 """The smoothing helper, pinned. Pure numpy; runs without eccodes."""
 import unittest
 import numpy as np
-from smoothing import smooth, sigma_px, OUTSIDE
+from smoothing import smooth, shape, restore_peaks, sigma_px, OUTSIDE
 
 BBOX = (-100.0, 25.0, -90.0, 32.0)
 SIZE = (2000, 1400)          # 200 px per degree, the forecast close tier
@@ -42,6 +42,28 @@ class SmoothingTests(unittest.TestCase):
         self.assertEqual(before, 70.0)
         self.assertLess(after, 70.0)
         self.assertGreater(after, 55.0)
+
+
+    def test_shape_puts_the_peak_back_on_a_single_model_cell(self):
+        f = np.full((60, 60), 20.0); f[27:33, 27:33] = 70.0
+        _, _, lost = smooth(f, HRRR, BBOX, SIZE, 0.7)
+        out, before, after = shape(f, HRRR, BBOX, SIZE, 0.7)
+        self.assertLess(lost, 66.0, "a plain 0.7-cell smooth takes several dBZ off one cell")
+        self.assertGreaterEqual(after, before - 0.3, "with the peaks restored the core keeps its colour")
+        self.assertLessEqual(out.max(), before + 0.5, "and nothing is invented above it")
+
+    def test_restoring_peaks_never_lowers_a_pixel(self):
+        rng = np.random.default_rng(3)
+        f = rng.uniform(10, 60, (80, 80)); sm = shape(f, HRRR, BBOX, SIZE, 0.7)[0]
+        from scipy import ndimage
+        plain = ndimage.gaussian_filter(f, sigma_px(HRRR, BBOX, SIZE, 0.7), mode="nearest")
+        self.assertTrue(np.all(sm >= plain - 1e-6))
+
+    def test_shape_keeps_the_outside_outside(self):
+        f = np.full((100, 100), 40.0); f[:, 50:] = OUTSIDE
+        out, _, _ = shape(f, HRRR, BBOX, SIZE, 0.7)
+        np.testing.assert_array_equal(out[:, 50:], OUTSIDE)
+        self.assertGreaterEqual(out[:, :50].min(), 40.0 - 1e-6)
 
 
 if __name__ == "__main__":

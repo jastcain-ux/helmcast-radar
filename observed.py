@@ -47,7 +47,7 @@ from PIL import Image
 
 from render import (ALPHA, CONUS_BBOX, MERCATOR_R, PALETTE, QUANTISER, RAMP,
                     RAMP_STEPS, colourise)
-from smoothing import smooth
+from smoothing import shape
 
 BUCKET = "https://noaa-mrms-pds.s3.amazonaws.com"
 PRODUCT = "MergedReflectivityQCComposite_00.50"
@@ -140,11 +140,11 @@ def cells():
 # boater's data allowance is part of the product; a picture that costs three
 # times as much to look at is not a better picture.
 PALETTE_COLOURS = 256   # no longer used to write frames; kept for the nowcast import
-# No smoothing on measured frames. A 1 km core is often one pixel, and on real
-# frames a smooth of a quarter cell cut small cores by 4 to 8 dBZ — the table is
-# in `smoothing.py`. The measured half gets its smoothness from dither-free
-# RGBA output and the cubic sample alone (D-65, C-15).
-SMOOTH_CELLS = 0.0
+# 0.7 of a cell, with the peaks put back afterwards (`smoothing.shape`). With a
+# plain smooth a 1 km core lost 4 to 8 dBZ; with the peaks restored the strongest
+# core loses nothing and the smallest about 0.9 dBZ on real frames — the table is
+# in `smoothing.py` (D-66, superseding D-65's "measured gets none").
+SMOOTH_CELLS = 0.7
 
 # Values below this are "no echo" or "no coverage" rather than weak returns.
 # MRMS uses -99 for the first and -999 for the second; both must be pulled up
@@ -278,7 +278,7 @@ def render(values, meta, bbox, size):
     interpolated = ndimage.map_coordinates(field, [fy, fx], order=3,
                                            mode="nearest", prefilter=True)
     sampled = np.where(inside, interpolated, -99.0)
-    sampled, before, after = smooth(sampled, di, bbox, size, SMOOTH_CELLS)
+    sampled, before, after = shape(sampled, di, bbox, size, SMOOTH_CELLS)
     if before - after > 0.3:
         print(f"smooth: peak {before:.1f} -> {after:.1f} dBZ on {size[0]}x{size[1]}", flush=True)
     return Image.fromarray(colourise(sampled))
