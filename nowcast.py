@@ -36,8 +36,8 @@ from scipy import ndimage
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import observed                                            # noqa: E402
 import render as forecast                                   # noqa: E402
-from cells import (MID_ORIGINS, MID_SPAN, MID_SIZE, NATIONAL_BBOX,  # noqa: E402
-                   NATIONAL_ID, NATIONAL_SIZE)
+from cells import (CELL_ORIGINS, CELL_SIZE, CELL_SPAN, MID_ORIGINS,  # noqa: E402
+                   MID_SPAN, MID_SIZE, NATIONAL_BBOX, NATIONAL_ID, NATIONAL_SIZE)
 
 LEAD_MINUTES = [15, 30, 45, 60, 75, 90, 105, 120]
 # Pooling before correlation: the mosaic is 0.01 degrees and storm motion is a
@@ -54,9 +54,24 @@ POOL = 4
 BLOCK = 64
 # Below this fraction of echo a block cannot be correlated and borrows motion.
 MIN_ECHO_FRACTION = 0.02
-# Wide tier at half resolution; see the module docstring.
-NOWCAST_MID_SIZE = (MID_SIZE[0] // 2, MID_SIZE[1] // 2)
-NOWCAST_NATIONAL_SIZE = (NATIONAL_SIZE[0] // 2, NATIONAL_SIZE[1] // 2)
+# Same tiers as the measured half, and the same sizes for the wide and
+# national ones.
+#
+# The first version halved everything on the theory that an advected field
+# is a smear of its source. The first real frames disproved it — the +15 and
+# +60 crops carried MRMS-sharp cores and edges — and Jason saw the cost on
+# the phone: the measured half draws close cells at 480 px/degree, so the
+# moment the scrubber crossed NOW the picture dropped to 100 px/degree, five
+# times coarser. "Not good."
+#
+# Close cells come in at half the measured cell's pixel size, 240 px/degree,
+# and only for the first hour: that is three times sharper than before at a
+# quarter of the pixels, and the near leads are where a boater is actually
+# reading detail. The whole step was 51 seconds a run before this.
+NOWCAST_MID_SIZE = MID_SIZE
+NOWCAST_NATIONAL_SIZE = NATIONAL_SIZE
+NOWCAST_CLOSE_SIZE = (CELL_SIZE[0] // 2, CELL_SIZE[1] // 2)
+CLOSE_LEADS = {15, 30, 45, 60}
 
 
 def _pool(field):
@@ -182,7 +197,12 @@ _FIELD = _META = _OUT = _STAMP = None
 def _render_one(cell):
     name, bbox = cell
     try:
-        px = NOWCAST_NATIONAL_SIZE if name == NATIONAL_ID else NOWCAST_MID_SIZE
+        if name == NATIONAL_ID:
+            px = NOWCAST_NATIONAL_SIZE
+        elif name.startswith("wide-"):
+            px = NOWCAST_MID_SIZE
+        else:
+            px = NOWCAST_CLOSE_SIZE
         image = observed.render(_FIELD, _META, bbox, px)
         image.quantize(colors=observed.PALETTE_COLOURS, method=Image.FASTOCTREE,
                        dither=Image.FLOYDSTEINBERG) \
@@ -192,9 +212,13 @@ def _render_one(cell):
         return name, False, str(e)
 
 
-def tiers():
-    out = [(f"wide-{n}", (w, s, w + MID_SPAN[0], s + MID_SPAN[1]))
-           for n, w, s in MID_ORIGINS]
+def tiers(minutes):
+    """The frames to render for one lead: close cells for the first hour, the
+    wide tier and the national frame for all of them."""
+    out = []
+    if minutes in CLOSE_LEADS:
+        out += [(n, (w, s, w + CELL_SPAN[0], s + CELL_SPAN[1])) for n, w, s in CELL_ORIGINS]
+    out += [(f"wide-{n}", (w, s, w + MID_SPAN[0], s + MID_SPAN[1])) for n, w, s in MID_ORIGINS]
     out.append((NATIONAL_ID, NATIONAL_BBOX))
     return out
 
@@ -235,11 +259,14 @@ def main():
     print(f"tracked {stamp}: frames {apart:.0f} min apart, "
           f"median motion {np.median(np.hypot(vy, vx)) * 60 * 1.1:.0f} km/h")
 
-    wanted = [c for c in tiers() if not args.only or c[0] == args.only]
     frames = []
+    seen_cells = {}
     global _FIELD, _META, _OUT, _STAMP
     _META, _OUT = meta, args.out
     for minutes in LEAD_MINUTES:
+        wanted = [c for c in tiers(minutes) if not args.only or c[0] == args.only]
+        for n, b in wanted:
+            seen_cells[n] = b
         _FIELD = advect(curr, vy, vx, minutes)
         _STAMP = f"{stamp}-{minutes:03d}"
         when = t_curr + datetime.timedelta(minutes=minutes)
@@ -270,12 +297,12 @@ def main():
         "quantiser": forecast.QUANTISER,
         "palette": forecast.PALETTE,
         "cells": [{"id": n, "bbox": {"west": b[0], "south": b[1], "east": b[2], "north": b[3]}}
-                  for n, b in wanted],
+                  for n, b in seen_cells.items()],
         "frames": frames,
     }
     with open(manifest_path, "w") as f:
         json.dump(manifest, f, indent=1)
-    print(f"{len(LEAD_MINUTES)} leads x {len(wanted)} tiers = {len(frames)} nowcast frames")
+    print(f"{len(LEAD_MINUTES)} leads, {len(seen_cells)} tiers, {len(frames)} nowcast frames")
 
 
 if __name__ == "__main__":
