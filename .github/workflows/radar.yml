@@ -91,6 +91,9 @@ jobs:
 
       # Measured radar, every run. Cheap: one or two new frames per run,
       # about 1.5 MB in and 400 KB out each.
+      - name: Unit tests for the renderer maths
+        run: python -m unittest test_cells test_nowcast test_render
+
       - name: Render measured frames
         run: python observed.py --out public/observed
 
@@ -151,6 +154,12 @@ jobs:
               sys.exit(0)
           if published.get("palette") != render.PALETTE:
               print("palette changed; re-rendering")
+              sys.exit(0)
+          if published.get("smoothing") != render.SMOOTH_CELLS:
+              print("smoothing changed; re-rendering")
+              sys.exit(0)
+          if published.get("alpha") != render.ALPHA:
+              print("opacity changed; re-rendering")
               sys.exit(0)
           run = published["runTime"].replace("Z", "+00:00")
           age = datetime.datetime.now(datetime.timezone.utc) - datetime.datetime.fromisoformat(run)

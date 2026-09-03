@@ -44,7 +44,8 @@ import eccodes
 from scipy import ndimage
 from PIL import Image
 
-from render import CONUS_BBOX, MERCATOR_R, colourise, RAMP
+from render import ALPHA, CONUS_BBOX, MERCATOR_R, colourise, RAMP
+from smoothing import smooth
 
 BUCKET = "https://noaa-mrms-pds.s3.amazonaws.com"
 PRODUCT = "MergedReflectivityQCComposite_00.50"
@@ -104,9 +105,7 @@ def _render_one(cell):
         else:
             px = _SIZE
         image = render(_VALUES, _META, bbox, px)
-        image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE,
-                       dither=Image.FLOYDSTEINBERG) \
-             .save(os.path.join(_OUT, f"{name}-{_STAMP}.png"), optimize=True)
+        image.save(os.path.join(_OUT, f"{name}-{_STAMP}.png"), optimize=True)
         return name, True, None
     except Exception as e:            # noqa: BLE001 - reported, never substituted
         return name, False, str(e)
@@ -138,7 +137,12 @@ def cells():
 # picture only ever contains ramp colours at a fixed set of alphas. The
 # boater's data allowance is part of the product; a picture that costs three
 # times as much to look at is not a better picture.
-PALETTE_COLOURS = 256
+PALETTE_COLOURS = 256   # no longer used to write frames; kept for the nowcast import
+# No smoothing on measured frames. A 1 km core is often one pixel, and on real
+# frames a smooth of a quarter cell cut small cores by 4 to 8 dBZ — the table is
+# in `smoothing.py`. The measured half gets its smoothness from dither-free
+# RGBA output and the cubic sample alone (D-65, C-15).
+SMOOTH_CELLS = 0.0
 
 # Values below this are "no echo" or "no coverage" rather than weak returns.
 # MRMS uses -99 for the first and -999 for the second; both must be pulled up
@@ -272,6 +276,9 @@ def render(values, meta, bbox, size):
     interpolated = ndimage.map_coordinates(field, [fy, fx], order=3,
                                            mode="nearest", prefilter=True)
     sampled = np.where(inside, interpolated, -99.0)
+    sampled, before, after = smooth(sampled, di, bbox, size, SMOOTH_CELLS)
+    if before - after > 0.3:
+        print(f"smooth: peak {before:.1f} -> {after:.1f} dBZ on {size[0]}x{size[1]}", flush=True)
     return Image.fromarray(colourise(sampled))
 
 
@@ -365,6 +372,8 @@ def main():
             .isoformat(timespec="seconds").replace("+00:00", "Z"),
         "stepMinutes": STEP_MINUTES,
         "dbzFloor": RAMP[0][0],
+        "smoothing": SMOOTH_CELLS,
+        "alpha": ALPHA,
         "size": {"width": size[0], "height": size[1]},
         "cells": [{"id": name,
                    "bbox": {"west": b[0], "south": b[1], "east": b[2], "north": b[3]}}

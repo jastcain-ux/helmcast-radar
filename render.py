@@ -41,6 +41,7 @@ from pyproj import CRS, Transformer
 from cells import (FORECAST_CELL_ORIGINS, FORECAST_CELL_SPAN,
                    FORECAST_CELL_SIZE, NATIONAL_BBOX, NATIONAL_ID,
                    NATIONAL_SIZE)
+from smoothing import smooth  # noqa: E402
 
 NOMADS = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/hrrr/prod"
 MERCATOR_R = 20037508.342789244
@@ -106,7 +107,13 @@ PALETTE_COLOURS = 256
 # runner's Pillow is whatever pip gives it and the enum is newer than some of
 # those. If this still collapses the ramp, the next step is full-colour PNGs
 # for the forecast and nowcast tiers at about three times the bytes.
-QUANTISER = "octree-fs"
+# "rgba": no palette and no dither. The dither was the grain Jason saw in every
+# storm core — a 12x12 window held 11 colours where a smooth picture holds 3
+# (D-65). A frame costs about three times the bytes; the picture is the product.
+QUANTISER = "rgba"
+# Fraction of one model cell to smooth by after the cubic upsample; the table
+# and the reason are in `smoothing.py`.
+SMOOTH_CELLS = 0.3
 # Named so the workflow re-renders when the colour scheme itself changes.
 PALETTE = "twc-1"
 
@@ -120,9 +127,7 @@ def _render_one(cell):
     name, bbox, size = cell
     try:
         image = render(_VALUES, _META, bbox, size)
-        image.quantize(colors=PALETTE_COLOURS, method=Image.FASTOCTREE,
-                       dither=Image.FLOYDSTEINBERG) \
-             .save(os.path.join(_OUT, f"{name}-refc-{_MINUTES:04d}.png"), optimize=True)
+        image.save(os.path.join(_OUT, f"{name}-refc-{_MINUTES:04d}.png"), optimize=True)
         return name, True, None
     except Exception as e:            # noqa: BLE001 - reported, never substituted
         return name, False, str(e)
@@ -170,7 +175,7 @@ RAMP = [
     (60, (185,  28,  28)), (65, (153,  27,  27)), (70, (127,  29,  29)),
     (80, (127,  29,  29)),
 ]
-ALPHA = 230   # near-opaque, the way the reference paints it
+ALPHA = 255   # opaque. Jason, 2026-09-02, against The Weather Channel side by side (D-65)
 # The outermost returns fade in rather than starting at full opacity, so the
 # edge of a cell is an edge rather than a cliff. Real precipitation does not
 # have a hard boundary and drawing one implies a certainty about where the rain
@@ -390,6 +395,14 @@ def render(values, meta, bbox, size, paint=None):
     interpolated = ndimage.map_coordinates(values, [fy, fx], order=3,
                                            mode="nearest", prefilter=True)
     sampled = np.where(inside, interpolated, -99.0)
+    if paint is None:
+        # Reflectivity only; cloud cover reuses the reprojection untouched.
+        sampled, before, after = smooth(sampled, meta["DxInMetres"] / 111_000.0,
+                                        bbox, size, SMOOTH_CELLS)
+        if before - after > 0.3:
+            # Louder than a third of a ramp step: say so, with the frame size,
+            # so a core understated by smoothing is in the run log, not hidden.
+            print(f"smooth: peak {before:.1f} -> {after:.1f} dBZ on {size[0]}x{size[1]}", flush=True)
     # `paint` so the cloud renderer can reuse this reprojection rather than
     # keeping a second copy of it. One implementation of the Lambert-to-mercator
     # sampling, which is the part that is easy to get subtly wrong.
@@ -489,6 +502,8 @@ def main():
         "rampSteps": RAMP_STEPS,
         "quantiser": QUANTISER,
         "palette": PALETTE,
+        "smoothing": SMOOTH_CELLS,
+        "alpha": ALPHA,
         "cells": [{"id": name,
                    "bbox": {"west": b[0], "south": b[1], "east": b[2], "north": b[3]}}
                   for name, b, _ in wanted_cells],

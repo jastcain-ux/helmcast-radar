@@ -204,9 +204,7 @@ def _render_one(cell):
         else:
             px = NOWCAST_CLOSE_SIZE
         image = observed.render(_FIELD, _META, bbox, px)
-        image.quantize(colors=observed.PALETTE_COLOURS, method=Image.FASTOCTREE,
-                       dither=Image.FLOYDSTEINBERG) \
-             .save(os.path.join(_OUT, f"{name}-{_STAMP}.png"), optimize=True)
+        image.save(os.path.join(_OUT, f"{name}-{_STAMP}.png"), optimize=True)
         return name, True, None
     except Exception as e:                                  # noqa: BLE001
         return name, False, str(e)
@@ -296,6 +294,8 @@ def main():
         "rampSteps": forecast.RAMP_STEPS,
         "quantiser": forecast.QUANTISER,
         "palette": forecast.PALETTE,
+        "smoothing": observed.SMOOTH_CELLS,
+        "alpha": forecast.ALPHA,
         "cells": [{"id": n, "bbox": {"west": b[0], "south": b[1], "east": b[2], "north": b[3]}}
                   for n, b in seen_cells.items()],
         "frames": frames,
